@@ -1,0 +1,283 @@
+package types
+
+import (
+	"math/big"
+	"time"
+)
+
+// ApiCreds represents API credentials for Level 2 authentication
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:10-14
+type ApiCreds struct {
+	ApiKey        string `json:"api_key"`
+	ApiSecret     string `json:"api_secret"`
+	ApiPassphrase string `json:"api_passphrase"`
+}
+
+// RequestArgs represents arguments for building request headers
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:17-21
+type RequestArgs struct {
+	Method      string      `json:"method"`
+	RequestPath string      `json:"request_path"`
+	Body        interface{} `json:"body,omitempty"`
+}
+
+// BookParams represents parameters for orderbook queries
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:24-27
+type BookParams struct {
+	TokenID string `json:"token_id"`
+	Side    string `json:"side,omitempty"`
+}
+
+// OrderArgs represents arguments for creating an order
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:30-70
+type OrderArgs struct {
+	TokenID     string  `json:"token_id"`     // TokenID of the Conditional token asset being traded
+	Price       float64 `json:"price"`        // Price used to create the order
+	Size        float64 `json:"size"`         // Size in terms of the ConditionalToken
+	Side        string  `json:"side"`         // Side of the order (BUY/SELL)
+	FeeRateBps  int     `json:"fee_rate_bps"` // Fee rate, in basis points, charged to the order maker
+	Nonce       int     `json:"nonce"`        // Nonce used for onchain cancellations
+	Expiration  int64   `json:"expiration"`   // Timestamp after which the order is expired
+	Taker       string  `json:"taker"`        // Address of the order taker. Zero address for public order
+}
+
+// MarketOrderArgs represents arguments for creating a market order
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:73-109
+type MarketOrderArgs struct {
+	TokenID    string  `json:"token_id"` // TokenID of the Conditional token asset being traded
+	Amount     float64 `json:"amount"`   // BUY orders: $$$ Amount to buy, SELL orders: Shares to sell
+	Side       string  `json:"side"`     // Side of the order
+	Price      float64 `json:"price"`    // Price used to create the order (optional, calculated if 0)
+	FeeRateBps int     `json:"fee_rate_bps"`
+	Nonce      int     `json:"nonce"`
+	Taker      string  `json:"taker"`
+}
+
+// TradeParams represents parameters for querying trades
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:112-119
+type TradeParams struct {
+	ID           string `json:"id,omitempty"`
+	MakerAddress string `json:"maker_address,omitempty"`
+	Market       string `json:"market,omitempty"`
+	AssetID      string `json:"asset_id,omitempty"`
+	Before       int64  `json:"before,omitempty"`
+	After        int64  `json:"after,omitempty"`
+}
+
+// OpenOrderParams represents parameters for querying open orders
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:122-126
+type OpenOrderParams struct {
+	ID      string `json:"id,omitempty"`
+	Market  string `json:"market,omitempty"`
+	AssetID string `json:"asset_id,omitempty"`
+}
+
+// DropNotificationParams represents parameters for dropping notifications
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:129-131
+type DropNotificationParams struct {
+	IDs []string `json:"ids,omitempty"`
+}
+
+// OrderSummary represents a single order in the orderbook
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:134-145
+type OrderSummary struct {
+	Price string `json:"price"`
+	Size  string `json:"size"`
+}
+
+// OrderBookSummary represents the full orderbook state
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:148-163
+type OrderBookSummary struct {
+	Market    string         `json:"market"`
+	AssetID   string         `json:"asset_id"`
+	Timestamp string         `json:"timestamp"`
+	Bids      []OrderSummary `json:"bids"`
+	Asks      []OrderSummary `json:"asks"`
+	Hash      string         `json:"hash,omitempty"`
+}
+
+// AssetType represents the type of asset (collateral or conditional)
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:166-168
+type AssetType string
+
+const (
+	AssetTypeCollateral  AssetType = "COLLATERAL"
+	AssetTypeConditional AssetType = "CONDITIONAL"
+)
+
+// BalanceAllowanceParams represents parameters for balance/allowance queries
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:171-175
+type BalanceAllowanceParams struct {
+	AssetType     AssetType `json:"asset_type,omitempty"`
+	TokenID       string    `json:"token_id,omitempty"`
+	SignatureType int       `json:"signature_type"`
+}
+
+// OrderType represents the order type
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:178-182
+type OrderType string
+
+const (
+	OrderTypeGTC OrderType = "GTC" // Good Till Cancelled
+	OrderTypeFOK OrderType = "FOK" // Fill Or Kill
+	OrderTypeGTD OrderType = "GTD" // Good Till Date
+	OrderTypeFAK OrderType = "FAK" // Fill And Kill
+)
+
+// OrderScoringParams represents parameters for checking if order is scoring
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:185-187
+type OrderScoringParams struct {
+	OrderID string `json:"orderId"`
+}
+
+// OrdersScoringParams represents parameters for checking if multiple orders are scoring
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:190-192
+type OrdersScoringParams struct {
+	OrderIDs []string `json:"orderIds"`
+}
+
+// TickSize represents valid tick sizes for orders
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:195
+type TickSize string
+
+const (
+	TickSize01    TickSize = "0.1"
+	TickSize001   TickSize = "0.01"
+	TickSize0001  TickSize = "0.001"
+	TickSize00001 TickSize = "0.0001"
+)
+
+// CreateOrderOptions represents options for creating an order
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:198-201
+type CreateOrderOptions struct {
+	TickSize TickSize `json:"tick_size"`
+	NegRisk  bool     `json:"neg_risk"`
+}
+
+// PartialCreateOrderOptions represents optional order creation options
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:204-207
+type PartialCreateOrderOptions struct {
+	TickSize *TickSize `json:"tick_size,omitempty"`
+	NegRisk  *bool     `json:"neg_risk,omitempty"`
+}
+
+// RoundConfig represents rounding configuration for different tick sizes
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:210-214
+type RoundConfig struct {
+	Price  int `json:"price"`
+	Size   int `json:"size"`
+	Amount int `json:"amount"`
+}
+
+// ContractConfig represents smart contract addresses
+// Based on: py-clob-client-main/py_clob_client/clob_types.py:217-236
+// Also references: go-order-utils-main/pkg/config/config.go:9-17
+type ContractConfig struct {
+	Exchange          string `json:"exchange"`           // The exchange contract responsible for matching orders
+	Collateral        string `json:"collateral"`         // The ERC20 token used as collateral
+	ConditionalTokens string `json:"conditional_tokens"` // The ERC1155 conditional tokens contract
+}
+
+// Response represents a generic API response with pagination
+// Not directly in Python client but inferred from usage patterns
+type Response struct {
+	NextCursor string      `json:"next_cursor,omitempty"`
+	Data       interface{} `json:"data,omitempty"`
+}
+
+// Trade represents a trade/fill
+// Inferred from Python client API usage in py-clob-client-main/py_clob_client/client.py:550-569
+type Trade struct {
+	ID            string    `json:"id"`
+	TradedAt      time.Time `json:"traded_at"`
+	MakerOrderID  string    `json:"maker_order_id"`
+	TakerOrderID  string    `json:"taker_order_id"`
+	Side          string    `json:"side"`
+	Size          string    `json:"size"`
+	Price         string    `json:"price"`
+	FeeRateBps    string    `json:"fee_rate_bps"`
+	MakerAddress  string    `json:"maker_address"`
+	Market        string    `json:"market"`
+	Outcome       string    `json:"outcome"`
+	BucketIndex   int       `json:"bucket_index"`
+	AssetID       string    `json:"asset_id"`
+}
+
+// Order represents an order
+// Inferred from Python client API usage in py-clob-client-main/py_clob_client/client.py:497-516
+type Order struct {
+	ID            string    `json:"id"`
+	OrderID       string    `json:"order_id"`
+	Market        string    `json:"market"`
+	Side          string    `json:"side"`
+	OriginalSize  string    `json:"original_size"`
+	SizeMatched   string    `json:"size_matched"`
+	Size          string    `json:"size"`
+	Price         string    `json:"price"`
+	State         string    `json:"state"`
+	AssetID       string    `json:"asset_id"`
+	MakerAddress  string    `json:"maker_address"`
+	CreatedAt     time.Time `json:"created_at"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Outcome       string    `json:"outcome"`
+}
+
+// Market represents a market
+// Inferred from Python client API usage in py-clob-client-main/py_clob_client/client.py:707-731
+type Market struct {
+	ID              string                 `json:"id"`
+	Question        string                 `json:"question"`
+	Description     string                 `json:"description"`
+	ConditionID     string                 `json:"condition_id"`
+	Tokens          []MarketToken          `json:"tokens"`
+	MinTickSize     string                 `json:"min_tick_size"`
+	Active          bool                   `json:"active"`
+	Closed          bool                   `json:"closed"`
+	QuestionID      string                 `json:"question_id,omitempty"`
+	MarketType      string                 `json:"market_type"`
+	MarketSlug      string                 `json:"market_slug"`
+	EndDateISO      *time.Time             `json:"end_date_iso,omitempty"`
+	GameStartTime   *time.Time             `json:"game_start_time,omitempty"`
+	AcceptingOrders bool                   `json:"accepting_orders"`
+	Tags            []string               `json:"tags,omitempty"`
+	NegRisk         bool                   `json:"neg_risk"`
+	EnableOrderBook bool                   `json:"enable_order_book"`
+	ActivePre       bool                   `json:"active_pre"`
+	ClosedPre       bool                   `json:"closed_pre"`
+	Rewards         map[string]interface{} `json:"rewards,omitempty"`
+}
+
+// MarketToken represents a token in a market
+// Inferred from Market structure
+type MarketToken struct {
+	TokenID  string  `json:"token_id"`
+	Outcome  string  `json:"outcome"`
+	Price    float64 `json:"price"`
+	Winner   bool    `json:"winner"`
+}
+
+// Notification represents a user notification
+// Inferred from Python client API usage in py-clob-client-main/py_clob_client/client.py:605-617
+type Notification struct {
+	ID               string                 `json:"id"`
+	Type             string                 `json:"type"`
+	Data             map[string]interface{} `json:"data"`
+	UserAddress      string                 `json:"user_address"`
+	TimestampCreated time.Time              `json:"timestamp_created"`
+	Read             bool                   `json:"read"`
+}
+
+// BalanceAllowance represents balance and allowance amounts
+// Inferred from Python client API usage in py-clob-client-main/py_clob_client/client.py:631-659
+type BalanceAllowance struct {
+	Balance   *big.Int `json:"balance"`
+	Allowance *big.Int `json:"allowance"`
+}
+
+// SignedOrder represents a signed order (from go-order-utils)
+// Based on: go-order-utils-main/pkg/model/order.go:91-96
+type SignedOrder struct {
+	Order     interface{} `json:"order"`
+	Signature []byte      `json:"signature"`
+}

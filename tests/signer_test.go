@@ -1,6 +1,7 @@
-package signer
+package tests
 
 import (
+	signer2 "github.com/pooofdevelopment/go-clob-client/pkg/signer"
 	"strings"
 	"testing"
 )
@@ -48,21 +49,21 @@ func TestNewSigner(t *testing.T) {
 			wantErr:    true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			signer, err := NewSigner(tt.privateKey, tt.chainID)
-			
+			signer, err := signer2.NewSigner(tt.privateKey, tt.chainID)
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSigner() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if signer.Address() != tt.wantAddr {
 					t.Errorf("Address() = %v, want %v", signer.Address(), tt.wantAddr)
 				}
-				
+
 				if signer.GetChainID() != tt.chainID {
 					t.Errorf("GetChainID() = %v, want %v", signer.GetChainID(), tt.chainID)
 				}
@@ -76,32 +77,32 @@ func TestNewSigner(t *testing.T) {
 func TestSign(t *testing.T) {
 	// Use test private key
 	privateKey := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-	s, err := NewSigner(privateKey, 137)
+	s, err := signer2.NewSigner(privateKey, 137)
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
-	
+
 	// Test message hash (32 bytes)
 	messageHash := make([]byte, 32)
 	for i := range messageHash {
 		messageHash[i] = byte(i)
 	}
-	
+
 	signature, err := s.Sign(messageHash)
 	if err != nil {
 		t.Fatalf("Sign() failed: %v", err)
 	}
-	
+
 	// Signature should be hex string with 0x prefix
 	if !strings.HasPrefix(signature, "0x") {
 		t.Error("Signature should have 0x prefix")
 	}
-	
+
 	// Signature should be 132 characters (0x + 130 hex chars for 65 bytes)
 	if len(signature) != 132 {
 		t.Errorf("Signature length = %d, want 132", len(signature))
 	}
-	
+
 	// Test invalid message hash length
 	invalidHash := make([]byte, 31)
 	_, err = s.Sign(invalidHash)
@@ -114,12 +115,12 @@ func TestSign(t *testing.T) {
 func TestSignerMethods(t *testing.T) {
 	privateKey := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	chainID := 137
-	
-	s, err := NewSigner(privateKey, chainID)
+
+	s, err := signer2.NewSigner(privateKey, chainID)
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
-	
+
 	// Test Address()
 	addr := s.Address()
 	if addr == "" {
@@ -131,12 +132,12 @@ func TestSignerMethods(t *testing.T) {
 	if len(addr) != 42 {
 		t.Errorf("Address length = %d, want 42", len(addr))
 	}
-	
+
 	// Test GetChainID()
 	if s.GetChainID() != chainID {
 		t.Errorf("GetChainID() = %d, want %d", s.GetChainID(), chainID)
 	}
-	
+
 	// Test GetPrivateKey()
 	if s.GetPrivateKey() == nil {
 		t.Error("GetPrivateKey() returned nil")

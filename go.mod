@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/ethereum/go-ethereum v1.14.0
-	github.com/polymarket/go-order-utils v0.0.0
+	github.com/polymarket/go-order-utils v1.22.3
 )
 
 require (
@@ -14,5 +14,3 @@ require (
 	golang.org/x/crypto v0.22.0 // indirect
 	golang.org/x/sys v0.19.0 // indirect
 )
-
-replace github.com/polymarket/go-order-utils => ./go-order-utils-main

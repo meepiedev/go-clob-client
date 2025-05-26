@@ -295,3 +295,8 @@ func (ob *OrderBuilder) CalculateSellMarketPrice(positions []types.OrderSummary,
 	}
 	return 0, fmt.Errorf("no match")
 }
+
+// GetSignatureType returns the signature type of the order builder
+func (ob *OrderBuilder) GetSignatureType() model.SignatureType {
+	return ob.sigType
+}

@@ -113,7 +113,9 @@ func buildMessageHash(auth ClobAuth) common.Hash {
 	// Encode and hash
 	encoded := make([]byte, 0, 160)
 	encoded = append(encoded, typeHash.Bytes()...)
-	encoded = append(encoded, common.HexToAddress(auth.Address).Bytes()...)
+	// Address should be 20 bytes, left-padded to 32
+	addressBytes := common.HexToAddress(auth.Address).Bytes()
+	encoded = append(encoded, common.LeftPadBytes(addressBytes, 32)...)
 	encoded = append(encoded, timestampHash.Bytes()...)
 	encoded = append(encoded, common.LeftPadBytes(nonceBig.Bytes(), 32)...)
 	encoded = append(encoded, messageHash.Bytes()...)

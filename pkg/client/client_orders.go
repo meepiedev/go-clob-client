@@ -328,25 +328,32 @@ func (c *ClobClient) GetTrades(params *types.TradeParams, nextCursor string) ([]
 // orderToJSON converts an order to JSON format for API submission
 // Based on: py-clob-client-main/py_clob_client/utilities.py:35-65
 func (c *ClobClient) orderToJSON(order *model.SignedOrder, orderType types.OrderType) map[string]interface{} {
-	// Build order JSON
+	// Convert side from int to string
+	sideStr := "BUY"
+	if order.Side.Int64() == 1 {
+		sideStr = "SELL"
+	}
+	
+	// Build order JSON with signature inside the order object
+	// Python SDK sends salt and signatureType as numbers, not strings
 	orderData := map[string]interface{}{
-		"salt":          order.Salt.String(),
-		"maker":         order.Maker.Hex(),
-		"signer":        order.Signer.Hex(),
-		"taker":         order.Taker.Hex(),
+		"salt":          order.Salt.Int64(),  // Send as number, not string
+		"maker":         order.Maker.Hex(),   // Don't lowercase - Python doesn't
+		"signer":        order.Signer.Hex(),  // Don't lowercase - Python doesn't
+		"taker":         order.Taker.Hex(),   // Don't lowercase - Python doesn't
 		"tokenId":       order.TokenId.String(),
 		"makerAmount":   order.MakerAmount.String(),
 		"takerAmount":   order.TakerAmount.String(),
 		"expiration":    order.Expiration.String(),
 		"nonce":         order.Nonce.String(),
 		"feeRateBps":    order.FeeRateBps.String(),
-		"side":          order.Side.String(),
-		"signatureType": order.SignatureType.String(),
+		"side":          sideStr,
+		"signatureType": order.SignatureType.Int64(),  // Send as number, not string
+		"signature":     "0x" + fmt.Sprintf("%x", order.Signature),
 	}
 	
 	return map[string]interface{}{
 		"order":     orderData,
-		"signature": "0x" + fmt.Sprintf("%x", order.Signature),
 		"owner":     c.creds.ApiKey,
 		"orderType": string(orderType),
 	}

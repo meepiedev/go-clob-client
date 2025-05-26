@@ -3,6 +3,8 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 
 	"github.com/pooofdevelopment/go-clob-client/pkg/headers"
 	"github.com/pooofdevelopment/go-clob-client/pkg/httpclient"
@@ -357,4 +359,290 @@ func (c *ClobClient) GetAllMarkets() ([]types.Market, error) {
 	}
 
 	return allMarkets, nil
+}
+
+// GetGammaMarkets fetches markets from the gamma API with advanced filtering
+func (c *ClobClient) GetGammaMarkets(params *types.GammaMarketsParams) ([]types.GammaMarket, error) {
+	// Build URL with query parameters
+	baseURL := "https://gamma-api.polymarket.com/markets"
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	q := u.Query()
+	
+	if params != nil {
+		if params.Limit > 0 {
+			q.Set("limit", strconv.Itoa(params.Limit))
+		}
+		if params.Offset > 0 {
+			q.Set("offset", strconv.Itoa(params.Offset))
+		}
+		if params.Order != "" {
+			q.Set("order", params.Order)
+		}
+		if params.Ascending != nil {
+			q.Set("ascending", strconv.FormatBool(*params.Ascending))
+		}
+		if params.Active != nil {
+			q.Set("active", strconv.FormatBool(*params.Active))
+		}
+		if params.Closed != nil {
+			q.Set("closed", strconv.FormatBool(*params.Closed))
+		}
+		if params.Archived != nil {
+			q.Set("archived", strconv.FormatBool(*params.Archived))
+		}
+		if params.Restricted != nil {
+			q.Set("restricted", strconv.FormatBool(*params.Restricted))
+		}
+		if params.LiquidityNumMin > 0 {
+			q.Set("liquidity_num_min", fmt.Sprintf("%f", params.LiquidityNumMin))
+		}
+		if params.VolumeNumMin > 0 {
+			q.Set("volume_num_min", fmt.Sprintf("%f", params.VolumeNumMin))
+		}
+		// Add more parameters as needed
+		for _, id := range params.ID {
+			q.Add("id", strconv.Itoa(id))
+		}
+		for _, slug := range params.Slug {
+			q.Add("slug", slug)
+		}
+		for _, tokenID := range params.ClobTokenIDs {
+			q.Add("clob_token_ids", tokenID)
+		}
+		for _, conditionID := range params.ConditionIDs {
+			q.Add("condition_ids", conditionID)
+		}
+	}
+	
+	u.RawQuery = q.Encode()
+	
+	// Make the request
+	resp, err := c.httpClient.Get(u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse response as array of GammaMarket
+	var markets []types.GammaMarket
+	
+	// The httpClient.Get wraps array responses in a "data" key
+	if data, ok := resp["data"].([]interface{}); ok {
+		// Response is array directly
+		for _, item := range data {
+			if m, ok := item.(map[string]interface{}); ok {
+				market := types.GammaMarket{}
+				
+				// Parse ID (can be string or float64)
+				switch v := m["id"].(type) {
+				case float64:
+					market.ID = int(v)
+				case string:
+					fmt.Sscanf(v, "%d", &market.ID)
+				}
+				
+				// Parse question
+				if question, ok := m["question"].(string); ok {
+					market.Question = question
+					market.Title = question // Also set as title for compatibility
+				}
+				
+				// Parse other fields safely
+				if slug, ok := m["slug"].(string); ok {
+					market.Slug = slug
+				}
+				if archived, ok := m["archived"].(bool); ok {
+					market.Archived = archived
+				}
+				if active, ok := m["active"].(bool); ok {
+					market.Active = active
+				}
+				if closed, ok := m["closed"].(bool); ok {
+					market.Closed = closed
+				}
+				
+				// Parse numeric fields that could be string or float64
+				// Try both liquidity and liquidityNum
+				switch v := m["liquidity"].(type) {
+				case float64:
+					market.Liquidity = v
+				case string:
+					fmt.Sscanf(v, "%f", &market.Liquidity)
+				}
+				if market.Liquidity == 0 {
+					switch v := m["liquidityNum"].(type) {
+					case float64:
+						market.Liquidity = v
+					case string:
+						fmt.Sscanf(v, "%f", &market.Liquidity)
+					}
+				}
+				
+				// Try both volume and volumeNum
+				switch v := m["volume"].(type) {
+				case float64:
+					market.Volume = v
+				case string:
+					fmt.Sscanf(v, "%f", &market.Volume)
+				}
+				if market.Volume == 0 {
+					switch v := m["volumeNum"].(type) {
+					case float64:
+						market.Volume = v
+					case string:
+						fmt.Sscanf(v, "%f", &market.Volume)
+					}
+				}
+				
+				if startDate, ok := m["startDate"].(string); ok {
+					market.StartDate = startDate
+				} else if startDate, ok := m["start_date"].(string); ok {
+					market.StartDate = startDate
+				}
+				if endDate, ok := m["endDate"].(string); ok {
+					market.EndDate = endDate
+				} else if endDate, ok := m["end_date"].(string); ok {
+					market.EndDate = endDate
+				}
+				if description, ok := m["description"].(string); ok {
+					market.Description = description
+				}
+				if conditionID, ok := m["conditionId"].(string); ok {
+					market.ConditionID = conditionID
+				}
+				
+				// Parse clobTokenIds - it's a JSON string that needs to be unmarshaled
+				if tokenIDsStr, ok := m["clobTokenIds"].(string); ok {
+					var tokenIDs []string
+					if err := json.Unmarshal([]byte(tokenIDsStr), &tokenIDs); err == nil {
+						market.ClobTokenIDs = tokenIDs
+					}
+				}
+				
+				// Parse enableOrderBook
+				if enableOrderBook, ok := m["enableOrderBook"].(bool); ok {
+					market.EnableOrderBook = enableOrderBook
+				}
+				
+				// Only add markets that have enableOrderBook = true
+				if market.EnableOrderBook {
+					markets = append(markets, market)
+				}
+			}
+		}
+	} else {
+		// Try to parse the entire response as a market array
+		// This happens when the gamma API returns a plain array
+		// We need to marshal and unmarshal to convert properly
+		jsonData, err := json.Marshal(resp)
+		if err == nil {
+			var rawMarkets []map[string]interface{}
+			if err := json.Unmarshal(jsonData, &rawMarkets); err == nil {
+				for _, m := range rawMarkets {
+					market := types.GammaMarket{}
+					
+					// Parse ID (can be string or float64)
+					switch v := m["id"].(type) {
+					case float64:
+						market.ID = int(v)
+					case string:
+						fmt.Sscanf(v, "%d", &market.ID)
+					}
+					
+					// Parse question
+					if question, ok := m["question"].(string); ok {
+						market.Question = question
+						market.Title = question // Also set as title for compatibility
+					}
+					
+					// Parse other fields safely
+					if slug, ok := m["slug"].(string); ok {
+						market.Slug = slug
+					}
+					if archived, ok := m["archived"].(bool); ok {
+						market.Archived = archived
+					}
+					if active, ok := m["active"].(bool); ok {
+						market.Active = active
+					}
+					if closed, ok := m["closed"].(bool); ok {
+						market.Closed = closed
+					}
+					
+					// Parse numeric fields that could be string or float64
+					// Try both liquidity and liquidityNum
+					switch v := m["liquidity"].(type) {
+					case float64:
+						market.Liquidity = v
+					case string:
+						fmt.Sscanf(v, "%f", &market.Liquidity)
+					}
+					if market.Liquidity == 0 {
+						switch v := m["liquidityNum"].(type) {
+						case float64:
+							market.Liquidity = v
+						case string:
+							fmt.Sscanf(v, "%f", &market.Liquidity)
+						}
+					}
+					
+					// Try both volume and volumeNum
+					switch v := m["volume"].(type) {
+					case float64:
+						market.Volume = v
+					case string:
+						fmt.Sscanf(v, "%f", &market.Volume)
+					}
+					if market.Volume == 0 {
+						switch v := m["volumeNum"].(type) {
+						case float64:
+							market.Volume = v
+						case string:
+							fmt.Sscanf(v, "%f", &market.Volume)
+						}
+					}
+					
+					if startDate, ok := m["startDate"].(string); ok {
+						market.StartDate = startDate
+					} else if startDate, ok := m["start_date"].(string); ok {
+						market.StartDate = startDate
+					}
+					if endDate, ok := m["endDate"].(string); ok {
+						market.EndDate = endDate  
+					} else if endDate, ok := m["end_date"].(string); ok {
+						market.EndDate = endDate
+					}
+					if description, ok := m["description"].(string); ok {
+						market.Description = description
+					}
+					if conditionID, ok := m["conditionId"].(string); ok {
+						market.ConditionID = conditionID
+					}
+					
+					// Parse clobTokenIds - it's a JSON string that needs to be unmarshaled
+					if tokenIDsStr, ok := m["clobTokenIds"].(string); ok {
+						var tokenIDs []string
+						if err := json.Unmarshal([]byte(tokenIDsStr), &tokenIDs); err == nil {
+							market.ClobTokenIDs = tokenIDs
+						}
+					}
+					
+					// Parse enableOrderBook
+					if enableOrderBook, ok := m["enableOrderBook"].(bool); ok {
+						market.EnableOrderBook = enableOrderBook
+					}
+					
+					// Only add markets that have enableOrderBook = true
+					if market.EnableOrderBook {
+						markets = append(markets, market)
+					}
+				}
+			}
+		}
+	}
+
+	return markets, nil
 }

@@ -41,7 +41,7 @@ Thumbs.db
 *.tmp
 *.log
 
-# Example binaries
+# Example binaries <-- go src files remain.
 examples/get_ok
 examples/get_server_time
 examples/order
@@ -60,3 +60,6 @@ py-clob-client-main/
 __pycache__/
 *.pyc
 *.pyo
+
+# Claude IDE AI related stuff.
+.claude/

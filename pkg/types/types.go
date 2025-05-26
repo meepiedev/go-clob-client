@@ -281,3 +281,48 @@ type SignedOrder struct {
 	Order     interface{} `json:"order"`
 	Signature []byte      `json:"signature"`
 }
+
+// GammaMarketsParams represents parameters for gamma markets API
+type GammaMarketsParams struct {
+	Limit           int      `json:"limit,omitempty"`
+	Offset          int      `json:"offset,omitempty"`
+	Order           string   `json:"order,omitempty"`
+	Ascending       *bool    `json:"ascending,omitempty"`
+	ID              []int    `json:"id,omitempty"`
+	Slug            []string `json:"slug,omitempty"`
+	Archived        *bool    `json:"archived,omitempty"`
+	Active          *bool    `json:"active,omitempty"`
+	Closed          *bool    `json:"closed,omitempty"`
+	Restricted      *bool    `json:"restricted,omitempty"`
+	ClobTokenIDs    []string `json:"clob_token_ids,omitempty"`
+	ConditionIDs    []string `json:"condition_ids,omitempty"`
+	LiquidityNumMin float64  `json:"liquidity_num_min,omitempty"`
+	LiquidityNumMax float64  `json:"liquidity_num_max,omitempty"`
+	VolumeNumMin    float64  `json:"volume_num_min,omitempty"`
+	VolumeNumMax    float64  `json:"volume_num_max,omitempty"`
+	StartDateMin    string   `json:"start_date_min,omitempty"`
+	StartDateMax    string   `json:"start_date_max,omitempty"`
+	EndDateMin      string   `json:"end_date_min,omitempty"`
+	EndDateMax      string   `json:"end_date_max,omitempty"`
+	TagID           int      `json:"tag_id,omitempty"`
+	RelatedTags     *bool    `json:"related_tags,omitempty"`
+}
+
+// GammaMarket represents a market from the gamma API
+type GammaMarket struct {
+	ID              int      `json:"id"`
+	Slug            string   `json:"slug"`
+	Archived        bool     `json:"archived"`
+	Active          bool     `json:"active"`
+	Closed          bool     `json:"closed"`
+	Liquidity       float64  `json:"liquidity"`
+	Volume          float64  `json:"volume"`
+	StartDate       string   `json:"start_date"`
+	EndDate         string   `json:"end_date"`
+	Title           string   `json:"title"`
+	Description     string   `json:"description"`
+	ConditionID     string   `json:"condition_id"`
+	ClobTokenIDs    []string `json:"clob_token_ids"`
+	EnableOrderBook bool     `json:"enable_order_book"`
+	Question        string   `json:"question"`
+}

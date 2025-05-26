@@ -15,6 +15,7 @@ A Go client library for interacting with Polymarket's CLOB (Central Limit Order 
 - Trade history
 - Balance and allowance management
 - Notification handling
+- Proxy wallet support (POLY_PROXY signature type)
 
 ## Installation
 
@@ -66,6 +67,8 @@ clobClient, err := client.NewClobClient(
 ```
 
 ### Level 2 Client (Full Authentication)
+
+#### Method 1: Create new API credentials
 ```go
 // Create Level 1 client first
 clobClient, err := client.NewClobClient(
@@ -85,6 +88,52 @@ if err != nil {
 
 // Upgrade to Level 2
 clobClient.SetApiCreds(creds)
+```
+
+#### Method 2: Use existing API credentials
+```go
+// If you already have API credentials
+creds := &types.ApiCreds{
+    ApiKey:        "your-api-key",
+    ApiSecret:     "your-api-secret", 
+    ApiPassphrase: "your-passphrase",
+}
+
+// Create L2 client directly
+clobClient, err := client.NewClobClient(
+    "https://clob.polymarket.com",
+    137,
+    "your_private_key_hex",
+    creds,
+    nil,
+    nil,
+)
+```
+
+### Proxy Wallet Support (POLY_PROXY)
+
+The SDK supports proxy wallets for trading on behalf of another address:
+
+```go
+import "github.com/polymarket/go-order-utils/pkg/model"
+
+// Create client with proxy wallet
+sigType := model.POLY_PROXY
+walletAddress := "0x8c1AEC5B133ACA324ff6d92083D8b7aBd552727e" // Your proxy wallet
+
+clobClient, err := client.NewClobClient(
+    "https://clob.polymarket.com",
+    137,
+    "your_private_key_hex",
+    nil,
+    &sigType,
+    &walletAddress,
+)
+
+// Orders will be created with:
+// - maker: proxy wallet (holds funds)
+// - signer: your EOA address (from private key)
+// - signatureType: 1 (POLY_PROXY)
 ```
 
 ## Creating and Posting Orders
@@ -116,13 +165,13 @@ if err != nil {
 
 ## Examples
 
-See the `examples/` directory for more detailed examples covering:
-- Health checks
-- Order creation
-- Market orders
-- Orderbook queries
-- Trade history
-- And more...
+See the `examples/` directory for complete working examples:
+
+- `create_l2_client.go` - Complete L2 client setup with detailed explanations
+- `create_and_post_order.go` - Create and post orders with proxy wallet support
+- `get_ok.go` - Health check example
+- `get_server_time.go` - Server timestamp retrieval
+- `get_markets.go` - List active markets using Gamma API
 
 ## API Reference
 
@@ -135,6 +184,7 @@ The Go client maintains the same API structure as the Python client. Key methods
 - `GetMidpoint(tokenID)` - Get mid-market price
 - `GetPrice(tokenID, side)` - Get market price
 - `GetMarkets(cursor)` - List markets
+- `GetGammaMarkets(params)` - List markets from Gamma API
 
 ### Authenticated Methods (L1)
 - `CreateOrder(args, options)` - Create signed order
@@ -145,9 +195,26 @@ The Go client maintains the same API structure as the Python client. Key methods
 ### Full Access Methods (L2)
 - `PostOrder(order, type)` - Submit order
 - `Cancel(orderID)` - Cancel order
+- `CancelAll()` - Cancel all orders
 - `GetOrders(params, cursor)` - Get user orders
 - `GetTrades(params, cursor)` - Get trade history
 - `GetBalanceAllowance(params)` - Get balances
+- `GetNotifications(params, cursor)` - Get notifications
+- `DropNotifications(params)` - Mark notifications as read
+
+## Important Notes
+
+### Order Size Requirements
+- Minimum order size: $1.00 for most markets
+- Orders below minimum will be rejected with "invalid amount" error
+
+### Address Format
+- Ensure wallet addresses are exactly 40 hex characters (excluding "0x" prefix)
+- The SDK will handle address checksumming automatically
+
+### Signature Types
+- EOA (0): Standard Ethereum account signing
+- POLY_PROXY (1): Proxy wallet signing (maker != signer)
 
 ## Development
 
@@ -165,6 +232,17 @@ make test
 ```bash
 make lint
 ```
+
+## Troubleshooting
+
+### "Invalid signature" errors
+- Ensure your private key matches the expected signer address
+- For POLY_PROXY, verify the proxy wallet relationship is established
+- Check that addresses are properly formatted (40 hex chars)
+
+### "Not enough balance/allowance" errors
+- Verify your account has sufficient USDC balance
+- Check token allowances are set for the exchange contract
 
 ## License
 

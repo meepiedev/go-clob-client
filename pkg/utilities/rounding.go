@@ -31,12 +31,18 @@ func RoundUp(value float64, decimalPlaces int) float64 {
 // DecimalPlaces returns the number of decimal places in a float
 // Based on: py-clob-client-main/py_clob_client/order_builder/helpers.py:36-39
 func DecimalPlaces(value float64) int {
-	// Convert to string to count decimal places
-	str := fmt.Sprintf("%f", value)
+	// Convert to string with high precision to count decimal places
+	// Use %.15g to get up to 15 significant digits without trailing zeros
+	str := fmt.Sprintf("%.15g", value)
 	
-	// Remove trailing zeros
-	str = strings.TrimRight(str, "0")
-	str = strings.TrimRight(str, ".")
+	// Handle scientific notation
+	if strings.Contains(str, "e") {
+		// Convert from scientific notation to decimal
+		f, _ := strconv.ParseFloat(str, 64)
+		str = fmt.Sprintf("%.15f", f)
+		str = strings.TrimRight(str, "0")
+		str = strings.TrimRight(str, ".")
+	}
 	
 	// Find decimal point
 	parts := strings.Split(str, ".")

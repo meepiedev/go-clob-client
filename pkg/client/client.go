@@ -69,7 +69,13 @@ func NewClobClient(host string, chainID int, privateKey string, creds *types.Api
 	// Create order builder if signer is available
 	// Based on: py-clob-client-main/py_clob_client/client.py:117-120
 	if s != nil {
-		client.builder = orderbuilder.NewOrderBuilder(s, signatureType, funder)
+		// Normalize funder address to lowercase if provided
+		var normalizedFunder *string
+		if funder != nil && *funder != "" {
+			lower := strings.ToLower(*funder)
+			normalizedFunder = &lower
+		}
+		client.builder = orderbuilder.NewOrderBuilder(s, signatureType, normalizedFunder)
 	}
 
 	return client, nil
@@ -275,13 +281,29 @@ func (c *ClobClient) GetTickSize(tokenID string) (types.TickSize, error) {
 
 	// Parse and cache result
 	// Based on: py-clob-client-main/py_clob_client/client.py:307
-	if minTickSize, ok := result["minimum_tick_size"].(string); ok {
-		tickSize := types.TickSize(minTickSize)
-		c.tickSizes[tokenID] = tickSize
-		return tickSize, nil
+	// Handle both string and float64 responses
+	var tickSizeStr string
+	
+	switch v := result["minimum_tick_size"].(type) {
+	case string:
+		tickSizeStr = v
+	case float64:
+		tickSizeStr = fmt.Sprintf("%g", v)
+	default:
+		// Try alternative field name
+		switch v := result["min_tick_size"].(type) {
+		case string:
+			tickSizeStr = v
+		case float64:
+			tickSizeStr = fmt.Sprintf("%g", v)
+		default:
+			return "", fmt.Errorf("failed to get tick size from response: %v", result)
+		}
 	}
-
-	return "", fmt.Errorf("failed to get tick size")
+	
+	tickSize := types.TickSize(tickSizeStr)
+	c.tickSizes[tokenID] = tickSize
+	return tickSize, nil
 }
 
 // GetNegRisk checks if a market uses neg risk

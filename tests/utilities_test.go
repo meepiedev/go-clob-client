@@ -1,9 +1,10 @@
-package utilities
+package tests
 
 import (
+	"github.com/pooofdevelopment/go-clob-client/pkg/utilities"
 	"math/big"
 	"testing"
-	
+
 	"github.com/pooofdevelopment/go-clob-client/pkg/types"
 )
 
@@ -36,10 +37,10 @@ func TestToTokenDecimals(t *testing.T) {
 			expected: "0",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ToTokenDecimals(tt.amount)
+			result := utilities.ToTokenDecimals(tt.amount)
 			if result.String() != tt.expected {
 				t.Errorf("ToTokenDecimals(%f) = %s, want %s", tt.amount, result.String(), tt.expected)
 			}
@@ -75,10 +76,10 @@ func TestFromTokenDecimals(t *testing.T) {
 			expected: 0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := FromTokenDecimals(tt.amount)
+			result := utilities.FromTokenDecimals(tt.amount)
 			if result != tt.expected {
 				t.Errorf("FromTokenDecimals(%s) = %f, want %f", tt.amount.String(), result, tt.expected)
 			}
@@ -90,10 +91,10 @@ func TestFromTokenDecimals(t *testing.T) {
 // Based on: py-clob-client-main/py_clob_client/order_builder/helpers.py:18-21
 func TestRoundNormal(t *testing.T) {
 	tests := []struct {
-		name           string
-		value          float64
-		decimalPlaces  int
-		expected       float64
+		name          string
+		value         float64
+		decimalPlaces int
+		expected      float64
 	}{
 		{
 			name:          "round to 2 decimals",
@@ -120,10 +121,10 @@ func TestRoundNormal(t *testing.T) {
 			expected:      2,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := RoundNormal(tt.value, tt.decimalPlaces)
+			result := utilities.RoundNormal(tt.value, tt.decimalPlaces)
 			if result != tt.expected {
 				t.Errorf("RoundNormal(%f, %d) = %f, want %f", tt.value, tt.decimalPlaces, result, tt.expected)
 			}
@@ -177,10 +178,10 @@ func TestPriceValid(t *testing.T) {
 			expected: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := PriceValid(tt.price, tt.tickSize)
+			result := utilities.PriceValid(tt.price, tt.tickSize)
 			if result != tt.expected {
 				t.Errorf("PriceValid(%f, %s) = %v, want %v", tt.price, tt.tickSize, result, tt.expected)
 			}
@@ -216,10 +217,10 @@ func TestIsTickSizeSmaller(t *testing.T) {
 			expected: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsTickSizeSmaller(tt.tick1, tt.tick2)
+			result := utilities.IsTickSizeSmaller(tt.tick1, tt.tick2)
 			if result != tt.expected {
 				t.Errorf("IsTickSizeSmaller(%s, %s) = %v, want %v", tt.tick1, tt.tick2, result, tt.expected)
 			}
@@ -243,24 +244,24 @@ func TestParseRawOrderbookSummary(t *testing.T) {
 			[]interface{}{"0.7", "250"},
 		},
 	}
-	
-	result, err := ParseRawOrderbookSummary(raw)
+
+	result, err := utilities.ParseRawOrderbookSummary(raw)
 	if err != nil {
 		t.Fatalf("ParseRawOrderbookSummary failed: %v", err)
 	}
-	
+
 	if result.Market != "0x1234" {
 		t.Errorf("Market = %s, want 0x1234", result.Market)
 	}
-	
+
 	if len(result.Bids) != 2 {
 		t.Errorf("Bids length = %d, want 2", len(result.Bids))
 	}
-	
+
 	if result.Bids[0].Price != "0.4" || result.Bids[0].Size != "100" {
 		t.Errorf("First bid incorrect: %+v", result.Bids[0])
 	}
-	
+
 	if len(result.Asks) != 2 {
 		t.Errorf("Asks length = %d, want 2", len(result.Asks))
 	}
@@ -280,16 +281,16 @@ func TestGenerateOrderbookSummaryHash(t *testing.T) {
 			{Price: "0.6", Size: "150"},
 		},
 	}
-	
-	hash := GenerateOrderbookSummaryHash(orderbook)
-	
+
+	hash := utilities.GenerateOrderbookSummaryHash(orderbook)
+
 	// Hash should be non-empty hex string
 	if len(hash) != 64 {
 		t.Errorf("Hash length = %d, want 64", len(hash))
 	}
-	
+
 	// Same orderbook should produce same hash
-	hash2 := GenerateOrderbookSummaryHash(orderbook)
+	hash2 := utilities.GenerateOrderbookSummaryHash(orderbook)
 	if hash != hash2 {
 		t.Error("Same orderbook produced different hashes")
 	}

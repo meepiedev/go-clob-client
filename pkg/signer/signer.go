@@ -3,6 +3,7 @@ package signer
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"strings"
 	
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -51,7 +52,7 @@ func NewSigner(privateKeyHex string, chainID int) (*Signer, error) {
 // Address returns the signer's address
 // Based on: py-clob-client-main/py_clob_client/signer.py:12-13
 func (s *Signer) Address() string {
-	return s.address.Hex()
+	return strings.ToLower(s.address.Hex())
 }
 
 // GetChainID returns the chain ID

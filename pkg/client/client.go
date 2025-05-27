@@ -13,6 +13,7 @@ import (
 	"github.com/pooofdevelopment/go-clob-client/pkg/signer"
 	"github.com/pooofdevelopment/go-clob-client/pkg/types"
 	"github.com/pooofdevelopment/go-clob-client/pkg/utilities"
+	"github.com/pooofdevelopment/go-clob-client/pkg/websocket"
 )
 
 // ClobClient is the main client for interacting with the CLOB API
@@ -456,4 +457,44 @@ func (c *ClobClient) GetOrderBook(tokenID string) (*types.OrderBookSummary, erro
 	}
 
 	return utilities.ParseRawOrderbookSummary(rawObs)
+}
+
+// CreateWebSocketClient creates a new websocket client for real-time data
+// Based on: clob-client-main/examples/socketConnection.ts
+func (c *ClobClient) CreateWebSocketClient(handler websocket.MessageHandler) *websocket.Client {
+	// Use the official Polymarket CLOB websocket endpoint
+	// Based on: https://docs.polymarket.com/developers/CLOB/websocket/wss-overview
+	wsHost := "wss://ws-subscriptions-clob.polymarket.com"
+	
+	return websocket.NewClient(wsHost, handler)
+}
+
+// SubscribeToMarketData creates a websocket connection and subscribes to market data
+// Based on: clob-client-main/examples/socketConnection.ts:63
+func (c *ClobClient) SubscribeToMarketData(tokenIDs []string, handler websocket.MessageHandler) (*websocket.Client, error) {
+	client := c.CreateWebSocketClient(handler)
+	
+	if err := client.SubscribeToMarket(tokenIDs, true); err != nil {
+		client.Close()
+		return nil, fmt.Errorf("failed to subscribe to market: %w", err)
+	}
+	
+	return client, nil
+}
+
+// SubscribeToUserData creates a websocket connection and subscribes to user data
+// Based on: clob-client-main/examples/socketConnection.ts:61
+func (c *ClobClient) SubscribeToUserData(markets []string, handler websocket.MessageHandler) (*websocket.Client, error) {
+	if err := c.assertLevel2Auth(); err != nil {
+		return nil, err
+	}
+	
+	client := c.CreateWebSocketClient(handler)
+	
+	if err := client.SubscribeToUser(c.creds, markets, true); err != nil {
+		client.Close()
+		return nil, fmt.Errorf("failed to subscribe to user data: %w", err)
+	}
+	
+	return client, nil
 }

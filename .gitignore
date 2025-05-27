@@ -63,3 +63,6 @@ __pycache__/
 
 # Claude IDE AI related stuff.
 .claude/
+
+# Reference Files / Context
+.reference-sdks/

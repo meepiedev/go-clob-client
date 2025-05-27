@@ -32,7 +32,22 @@ func ParseRawOrderbookSummary(raw map[string]interface{}) (*types.OrderBookSumma
 	if bidsRaw, ok := raw["bids"].([]interface{}); ok {
 		obs.Bids = make([]types.OrderSummary, len(bidsRaw))
 		for i, bidRaw := range bidsRaw {
-			if bid, ok := bidRaw.([]interface{}); ok && len(bid) >= 2 {
+			// Try parsing as object with price/size fields first
+			if bid, ok := bidRaw.(map[string]interface{}); ok {
+				price := ""
+				size := ""
+				if p, ok := bid["price"].(string); ok {
+					price = p
+				}
+				if s, ok := bid["size"].(string); ok {
+					size = s
+				}
+				obs.Bids[i] = types.OrderSummary{
+					Price: price,
+					Size:  size,
+				}
+			} else if bid, ok := bidRaw.([]interface{}); ok && len(bid) >= 2 {
+				// Fallback to array format [price, size]
 				obs.Bids[i] = types.OrderSummary{
 					Price: fmt.Sprintf("%v", bid[0]),
 					Size:  fmt.Sprintf("%v", bid[1]),
@@ -45,7 +60,22 @@ func ParseRawOrderbookSummary(raw map[string]interface{}) (*types.OrderBookSumma
 	if asksRaw, ok := raw["asks"].([]interface{}); ok {
 		obs.Asks = make([]types.OrderSummary, len(asksRaw))
 		for i, askRaw := range asksRaw {
-			if ask, ok := askRaw.([]interface{}); ok && len(ask) >= 2 {
+			// Try parsing as object with price/size fields first
+			if ask, ok := askRaw.(map[string]interface{}); ok {
+				price := ""
+				size := ""
+				if p, ok := ask["price"].(string); ok {
+					price = p
+				}
+				if s, ok := ask["size"].(string); ok {
+					size = s
+				}
+				obs.Asks[i] = types.OrderSummary{
+					Price: price,
+					Size:  size,
+				}
+			} else if ask, ok := askRaw.([]interface{}); ok && len(ask) >= 2 {
+				// Fallback to array format [price, size]
 				obs.Asks[i] = types.OrderSummary{
 					Price: fmt.Sprintf("%v", ask[0]),
 					Size:  fmt.Sprintf("%v", ask[1]),

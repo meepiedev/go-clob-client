@@ -224,7 +224,7 @@ func (m model) View() string {
 	if slug == "" {
 		slug = m.currentBook.Slug
 	}
-	
+
 	if slug != "" {
 		marketInfo = fmt.Sprintf("Market: %s (%s) | Asset: %s | Time: %s",
 			m.currentBook.Market, slug, m.currentBook.AssetID, timestamp.Format("15:04:05"))
@@ -325,7 +325,7 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 
 	// Header with proper spacing - using exact character positions
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Bold(true)
-	header := headerStyle.Render("  PRICE        SIZE       TOTAL      SIZE BAR   DEPTH")
+	header := headerStyle.Render("  PRICE        SIZE       TOTAL      VOL. BAR   DEPTH")
 	b.WriteString(header + "\n")
 
 	// Display up to 10 orders
@@ -340,7 +340,7 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 	if len(ordersToShow) > maxRows {
 		ordersToShow = ordersToShow[:maxRows]
 	}
-	
+
 	for _, order := range ordersToShow {
 		if size, err := strconv.ParseFloat(order.Size, 64); err == nil {
 			if size > maxSize {

@@ -44,18 +44,20 @@ type AuthMessage struct {
 // OrderBookUpdate represents a real-time orderbook update
 // Based on: Polymarket CLOB WebSocket API documentation
 type OrderBookUpdate struct {
-	EventType string                 `json:"event_type"`
-	AssetID   string                 `json:"asset_id"`
-	Market    string                 `json:"market"`
-	Timestamp string                 `json:"timestamp"`
-	Hash      string                 `json:"hash,omitempty"`
+	EventType   string                 `json:"event_type"`
+	AssetID     string                 `json:"asset_id"`
+	Market      string                 `json:"market"`
+	MarketSlug  string                 `json:"market_slug,omitempty"`
+	Slug        string                 `json:"slug,omitempty"`
+	Timestamp   string                 `json:"timestamp"`
+	Hash        string                 `json:"hash,omitempty"`
 	// API sometimes uses buys/sells, sometimes bids/asks
-	Buys      []types.OrderSummary   `json:"buys,omitempty"`
-	Sells     []types.OrderSummary   `json:"sells,omitempty"`
-	Bids      []types.OrderSummary   `json:"bids,omitempty"`
-	Asks      []types.OrderSummary   `json:"asks,omitempty"`
+	Buys        []types.OrderSummary   `json:"buys,omitempty"`
+	Sells       []types.OrderSummary   `json:"sells,omitempty"`
+	Bids        []types.OrderSummary   `json:"bids,omitempty"`
+	Asks        []types.OrderSummary   `json:"asks,omitempty"`
 	// For backwards compatibility
-	Data      types.OrderBookSummary `json:"data,omitempty"`
+	Data        types.OrderBookSummary `json:"data,omitempty"`
 }
 
 // PriceChangeUpdate represents a price change event
@@ -381,16 +383,16 @@ func (c *Client) handleArrayMessage(arrayData []interface{}, rawMessage []byte) 
 			}
 			
 			// Check what type of event this is
-			if eventType, hasEventType := itemMap["event_type"].(string); hasEventType {
-				log.Printf("Received %s event", eventType)
-			}
+			// if eventType, hasEventType := itemMap["event_type"].(string); hasEventType {
+			// 	log.Printf("Received %s event", eventType) // Disabled for TUI
+			// }
 			
 			// Log bid/ask counts for debugging
-			if bids, hasBids := itemMap["bids"].([]interface{}); hasBids {
-				if asks, hasAsks := itemMap["asks"].([]interface{}); hasAsks {
-					log.Printf("Message contains %d bids, %d asks", len(bids), len(asks))
-				}
-			}
+			// if bids, hasBids := itemMap["bids"].([]interface{}); hasBids {
+			// 	if asks, hasAsks := itemMap["asks"].([]interface{}); hasAsks {
+			// 		log.Printf("Message contains %d bids, %d asks", len(bids), len(asks)) // Disabled for TUI
+			// 	}
+			// }
 			
 			c.handleObjectMessage(itemMap, itemBytes)
 		}
@@ -420,7 +422,12 @@ func (c *Client) handleObjectMessage(update map[string]interface{}, rawMessage [
 					bookUpdate.Sells = bookUpdate.Asks
 				}
 				
-				log.Printf("Parsed book message: %d buys, %d sells", len(bookUpdate.Buys), len(bookUpdate.Sells))
+				// Debug: Log if we have a slug field (temporary for debugging)
+				if bookUpdate.MarketSlug != "" || bookUpdate.Slug != "" {
+					log.Printf("DEBUG: Found slug in orderbook: market_slug='%s' slug='%s'", bookUpdate.MarketSlug, bookUpdate.Slug)
+				}
+				
+				// log.Printf("Parsed book message: %d buys, %d sells", len(bookUpdate.Buys), len(bookUpdate.Sells)) // Disabled for TUI
 				c.handler.OnOrderBookUpdate(&bookUpdate)
 				return
 			} else {

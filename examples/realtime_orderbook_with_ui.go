@@ -218,8 +218,20 @@ func (m model) View() string {
 		timestamp = time.Now()
 	}
 
-	marketInfo := fmt.Sprintf("Market: %s | Asset: %s | Time: %s",
-		m.currentBook.Market, m.currentBook.AssetID, timestamp.Format("15:04:05"))
+	// Build market info with slug if available
+	var marketInfo string
+	slug := m.currentBook.MarketSlug
+	if slug == "" {
+		slug = m.currentBook.Slug
+	}
+	
+	if slug != "" {
+		marketInfo = fmt.Sprintf("Market: %s (%s) | Asset: %s | Time: %s",
+			m.currentBook.Market, slug, m.currentBook.AssetID, timestamp.Format("15:04:05"))
+	} else {
+		marketInfo = fmt.Sprintf("Market: %s | Asset: %s | Time: %s",
+			m.currentBook.Market, m.currentBook.AssetID, timestamp.Format("15:04:05"))
+	}
 	b.WriteString(headerStyle.Render(marketInfo) + "\n")
 
 	// Update statistics
@@ -313,13 +325,29 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 
 	// Header with proper spacing - using exact character positions
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Bold(true)
-	header := headerStyle.Render("  PRICE        SIZE       TOTAL      DEPTH")
+	header := headerStyle.Render("  PRICE        SIZE       TOTAL      SIZE BAR   DEPTH")
 	b.WriteString(header + "\n")
 
 	// Display up to 10 orders
 	maxRows := 10
 	if len(sortedOrders) < maxRows {
 		maxRows = len(sortedOrders)
+	}
+
+	// First pass: find the maximum individual order size and total volume
+	var maxSize, totalVolume float64
+	ordersToShow := sortedOrders
+	if len(ordersToShow) > maxRows {
+		ordersToShow = ordersToShow[:maxRows]
+	}
+	
+	for _, order := range ordersToShow {
+		if size, err := strconv.ParseFloat(order.Size, 64); err == nil {
+			if size > maxSize {
+				maxSize = size
+			}
+			totalVolume += size
+		}
 	}
 
 	var runningTotal float64
@@ -353,13 +381,33 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 			}
 		}
 
-		// Create depth bar
-		depthPercent := (size / runningTotal) * 100
-		barLength := int(depthPercent / 10)
-		if barLength > 10 {
-			barLength = 10
+		// Create SIZE BAR showing individual order size relative to max size
+		var sizeBarLength int
+		if maxSize > 0 {
+			// Each order gets bar length proportional to its size vs the largest order
+			// Minimum bar length of 1 to ensure visibility
+			sizePercent := (size / maxSize) * 100
+			sizeBarLength = int(sizePercent / 10)
+			if sizeBarLength < 1 && size > 0 {
+				sizeBarLength = 1 // Ensure even small orders get at least 1 block
+			}
+			if sizeBarLength > 10 {
+				sizeBarLength = 10
+			}
 		}
-		depthBar := strings.Repeat("█", barLength) + strings.Repeat("░", 10-barLength)
+		sizeBar := strings.Repeat("█", sizeBarLength) + strings.Repeat("░", 10-sizeBarLength)
+
+		// Create DEPTH bar showing cumulative market depth
+		var depthBarLength int
+		if totalVolume > 0 {
+			// Shows what percentage of total volume this cumulative total represents
+			depthPercent := (runningTotal / totalVolume) * 100
+			depthBarLength = int(depthPercent / 10)
+			if depthBarLength > 10 {
+				depthBarLength = 10
+			}
+		}
+		depthBar := strings.Repeat("█", depthBarLength) + strings.Repeat("░", 10-depthBarLength)
 
 		// Render each column with proper alignment
 		styledPrice := priceStyle.Render(priceText)
@@ -367,7 +415,7 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 		styledTotal := totalStyle.Render(totalText)
 
 		// Combine columns with proper spacing
-		line := "  " + styledPrice + " " + styledSize + " " + styledTotal + " " + depthBar
+		line := "  " + styledPrice + " " + styledSize + " " + styledTotal + " " + sizeBar + " " + depthBar
 		b.WriteString(line + "\n")
 	}
 

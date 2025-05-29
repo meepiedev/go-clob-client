@@ -1,0 +1,30 @@
+{
+  "api_key": "c8bb6848-03b2-f207-5efe-8247f5bc82bf",
+  "api_secret": "-SxbIVWe8h2QeX5CBTvHpurRDmvhBHEn0_xcrEFtqAg=",
+  "api_passphrase": "3075c04d1a3ef048c804737f052d670d2fd0a6983741c4873d0e06a637dd491e",
+  "private_key": "0x5d51f72170245e499a52ee40c725eb157eba4dfaf7be62e954207f8cf1cb5bd8",
+  "address": "0x8c1aec5b133aca324ff6d92083d8b7abd552727e",
+  "signature_type": "poly_proxy",
+  "max_spend_usdc": 5.0,
+  "markets": [
+    {
+      "name": "Elon Musk Net Worth on June 30?",
+      "slug": "elon-musk-net-worth-on-june-30"
+    }
+  ],
+  "strategies": {
+    "maker-taker": {
+      "enabled": false,
+      "min_edge": 0.005,
+      "worker_amount": 1,
+      "poll_interval_ms": 200,
+      "extra_edge": 0.01
+    },
+    "taker": {
+      "enabled": true,
+      "min_edge": 0.001,
+      "worker_amount": 5,
+      "poll_interval_ms": 100
+    }
+  }
+}

@@ -23,7 +23,7 @@ func printOrderBook(orderbook *types.OrderBookSummary) {
 			fmt.Printf("%s\t\t%s\n", ask.Price, ask.Size)
 		}
 	}
-	
+
 	fmt.Println()
 	fmt.Println("BIDS (Buy Orders):")
 	fmt.Println("Price\t\tSize")
@@ -33,7 +33,7 @@ func printOrderBook(orderbook *types.OrderBookSummary) {
 			fmt.Printf("%s\t\t%s\n", bid.Price, bid.Size)
 		}
 	}
-	
+
 	if len(orderbook.Bids) == 0 && len(orderbook.Asks) == 0 {
 		fmt.Println("No orders in the orderbook")
 	}

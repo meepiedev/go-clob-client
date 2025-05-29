@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -56,12 +60,20 @@ type noSpreadMsg string
 type tickMsg time.Time
 type errorMsg error
 
+// MarketData holds data for a single market/outcome
+type MarketData struct {
+	tokenID    string
+	name       string
+	orderBook  *websocket.OrderBookUpdate
+	spread     string
+	lastUpdate time.Time
+}
+
 // Model represents the application state
-type model struct {
+type state_model struct {
 	help         help.Model
 	keys         keyMap
-	yesBook      *websocket.OrderBookUpdate
-	noBook       *websocket.OrderBookUpdate
+	markets      []MarketData // Support multiple markets
 	lastUpdate   time.Time
 	startTime    time.Time
 	heartbeat    int
@@ -73,11 +85,14 @@ type model struct {
 	lastError    error
 	clobClient   *client.ClobClient
 	marketSlug   string
-	yesTokenID   string
-	noTokenID    string
-	yesSpread    string
-	noSpread     string
-	marketInfo   *types.GammaMarket
+	isEvent      bool // Whether this is an event with multiple markets
+	eventName    string
+	// Legacy fields for compatibility
+	yesBook    *websocket.OrderBookUpdate
+	noBook     *websocket.OrderBookUpdate
+	yesSpread  string
+	noSpread   string
+	marketInfo *types.GammaMarket
 	// Update counters
 	updateCounts struct {
 		orderBook   int
@@ -118,12 +133,16 @@ func (h *wsHandler) OnTickSizeChange(update *websocket.TickSizeChangeUpdate) {
 	h.program.Send(tickSizeChangeMsg(update))
 }
 
+func (h *wsHandler) OnLastTradePrice(update *websocket.LastTradePriceUpdate) {
+	// Not needed for orderbook UI, but required by interface
+}
+
 func (h *wsHandler) OnUserUpdate(update *websocket.UserUpdate) {
 	h.program.Send(userUpdateMsg(update))
 }
 
-func initialModel() model {
-	return model{
+func initialModel() state_model {
+	return state_model{
 		help:         help.New(),
 		keys:         keys,
 		startTime:    time.Now(),
@@ -132,14 +151,14 @@ func initialModel() model {
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m state_model) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
 		connectCmd(),
 	)
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m state_model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.quit) {
@@ -158,11 +177,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case orderBookMsg:
-		// Route to correct book based on token ID
-		if msg.tokenID == m.yesTokenID {
-			m.yesBook = msg.update
-		} else if msg.tokenID == m.noTokenID {
-			m.noBook = msg.update
+		// Update the correct market based on token ID
+		for i := range m.markets {
+			if m.markets[i].tokenID == msg.tokenID {
+				m.markets[i].orderBook = msg.update
+				m.markets[i].lastUpdate = time.Now()
+				// Update legacy fields for compatibility
+				if i == 0 {
+					m.yesBook = msg.update
+				} else if i == 1 {
+					m.noBook = msg.update
+				}
+				break
+			}
 		}
 		m.lastUpdate = time.Now()
 		m.connected = true
@@ -172,22 +199,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case priceChangeMsg:
 		m.updateCounts.priceChange++
 		m.updateCounts.total++
-		// Route to correct book based on token ID
-		var targetBook *websocket.OrderBookUpdate
-		if msg.tokenID == m.yesTokenID {
-			targetBook = m.yesBook
-		} else if msg.tokenID == m.noTokenID {
-			targetBook = m.noBook
+		// Find the correct market based on token ID
+		var targetMarket *MarketData
+		for i := range m.markets {
+			if m.markets[i].tokenID == msg.tokenID {
+				targetMarket = &m.markets[i]
+				break
+			}
 		}
 
-		if targetBook != nil {
+		if targetMarket != nil && targetMarket.orderBook != nil {
 			// Apply price changes
 			for _, change := range msg.update.Changes {
-				m.applyPriceChangeToBook(targetBook, change)
+				m.applyPriceChangeToBook(targetMarket.orderBook, change)
 				m.priceChanges[change.Price] = time.Now()
 			}
-			targetBook.Hash = msg.update.Hash
-			targetBook.Timestamp = msg.update.Timestamp
+			targetMarket.orderBook.Hash = msg.update.Hash
+			targetMarket.orderBook.Timestamp = msg.update.Timestamp
 			m.lastUpdate = time.Now()
 		}
 
@@ -210,15 +238,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case yesSpreadMsg:
 		m.yesSpread = string(msg)
+		if len(m.markets) > 0 {
+			m.markets[0].spread = string(msg)
+		}
 
 	case noSpreadMsg:
 		m.noSpread = string(msg)
+		if len(m.markets) > 1 {
+			m.markets[1].spread = string(msg)
+		}
 	}
 
 	return m, nil
 }
 
-func (m model) View() string {
+func (m state_model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
@@ -226,10 +260,24 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Header
-	title := titleStyle.Render("Meeep's CLOB client - Dual Market View")
+	var title string
+	if m.isEvent {
+		title = titleStyle.Render(fmt.Sprintf("Event: %s (%d outcomes)", m.eventName, len(m.markets)))
+	} else {
+		title = titleStyle.Render(fmt.Sprintf("Market: %s", m.eventName))
+	}
 	b.WriteString(title + "\n\n")
 
-	if m.yesBook == nil && m.noBook == nil {
+	// Check if any market has data
+	hasData := false
+	for _, market := range m.markets {
+		if market.orderBook != nil {
+			hasData = true
+			break
+		}
+	}
+
+	if !hasData {
 		indicator := m.getHeartbeatIndicator()
 		uptime := time.Since(m.startTime).Truncate(time.Second)
 		status := fmt.Sprintf("%s Connecting... | Uptime: %s", indicator, uptime)
@@ -286,41 +334,72 @@ func (m model) View() string {
 	}
 	b.WriteString(statusStyle.Render(updateInfo) + "\n\n")
 
-	// Render side-by-side books
-	leftCol := m.renderBookColumn("YES", m.yesBook, m.yesSpread)
-	rightCol := m.renderBookColumn("NO", m.noBook, m.noSpread)
+	// Render books based on market count
+	if len(m.markets) > 2 {
+		// For events with many outcomes, display in a grid or list format
+		b.WriteString(headerStyle.Render("📊 MARKET OUTCOMES") + "\n\n")
 
-	// Split into lines and combine side by side
-	leftLines := strings.Split(leftCol, "\n")
-	rightLines := strings.Split(rightCol, "\n")
+		for i, market := range m.markets {
+			if market.orderBook != nil {
+				// Show market name and best bid/ask
+				var bestBid, bestAsk float64
+				if len(market.orderBook.Buys) > 0 {
+					bestBid, _ = strconv.ParseFloat(market.orderBook.Buys[0].Price, 64)
+				}
+				if len(market.orderBook.Sells) > 0 {
+					bestAsk, _ = strconv.ParseFloat(market.orderBook.Sells[0].Price, 64)
+				}
 
-	maxLines := len(leftLines)
-	if len(rightLines) > maxLines {
-		maxLines = len(rightLines)
-	}
+				marketLine := fmt.Sprintf("%d. %-40s | Bid: $%.4f | Ask: $%.4f | Spread: %.4f",
+					i+1, market.name, bestBid, bestAsk, bestAsk-bestBid)
 
-	// Pad shorter column with empty lines
-	for len(leftLines) < maxLines {
-		leftLines = append(leftLines, "")
-	}
-	for len(rightLines) < maxLines {
-		rightLines = append(rightLines, "")
-	}
+				// Highlight if recently updated
+				if time.Since(market.lastUpdate) < 2*time.Second {
+					b.WriteString(pulseStyle.Render(marketLine) + "\n")
+				} else {
+					b.WriteString(marketLine + "\n")
+				}
+			} else {
+				b.WriteString(fmt.Sprintf("%d. %-40s | No data\n", i+1, market.name))
+			}
+		}
+	} else {
+		// Original side-by-side view for 2 markets
+		leftCol := m.renderBookColumn("YES", m.yesBook, m.yesSpread)
+		rightCol := m.renderBookColumn("NO", m.noBook, m.noSpread)
 
-	// Combine columns side by side with proper width handling
-	for i := 0; i < maxLines; i++ {
-		leftLine := leftLines[i]
-		rightLine := rightLines[i]
+		// Split into lines and combine side by side
+		leftLines := strings.Split(leftCol, "\n")
+		rightLines := strings.Split(rightCol, "\n")
 
-		// Calculate visual width (excluding ANSI codes) and pad to 70 characters
-		leftVisualWidth := lipgloss.Width(leftLine)
-		padding := 70 - leftVisualWidth
-		if padding < 0 {
-			padding = 0
+		maxLines := len(leftLines)
+		if len(rightLines) > maxLines {
+			maxLines = len(rightLines)
 		}
 
-		paddedLeft := leftLine + strings.Repeat(" ", padding)
-		b.WriteString(paddedLeft + " |   " + rightLine + "\n")
+		// Pad shorter column with empty lines
+		for len(leftLines) < maxLines {
+			leftLines = append(leftLines, "")
+		}
+		for len(rightLines) < maxLines {
+			rightLines = append(rightLines, "")
+		}
+
+		// Combine columns side by side with proper width handling
+		for i := 0; i < maxLines; i++ {
+			leftLine := leftLines[i]
+			rightLine := rightLines[i]
+
+			// Calculate visual width (excluding ANSI codes) and pad to 70 characters
+			leftVisualWidth := lipgloss.Width(leftLine)
+			padding := 70 - leftVisualWidth
+			if padding < 0 {
+				padding = 0
+			}
+
+			paddedLeft := leftLine + strings.Repeat(" ", padding)
+			b.WriteString(paddedLeft + " |   " + rightLine + "\n")
+		}
 	}
 
 	// Status bar
@@ -351,12 +430,12 @@ func (m model) View() string {
 	return b.String()
 }
 
-func (m model) getHeartbeatIndicator() string {
+func (m state_model) getHeartbeatIndicator() string {
 	indicators := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	return pulseStyle.Render(indicators[m.heartbeat%len(indicators)])
 }
 
-func (m model) renderBookColumn(title string, book *websocket.OrderBookUpdate, spread string) string {
+func (m state_model) renderBookColumn(title string, book *websocket.OrderBookUpdate, spread string) string {
 	var b strings.Builder
 
 	// Column title
@@ -414,7 +493,7 @@ func (m model) renderBookColumn(title string, book *websocket.OrderBookUpdate, s
 	return b.String()
 }
 
-func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse bool) string {
+func (m state_model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse bool) string {
 	if len(orders) == 0 {
 		return "  No orders"
 	}
@@ -555,7 +634,7 @@ func (m model) renderOrderSide(orders []types.OrderSummary, isBuys bool, reverse
 	return b.String()
 }
 
-func (m *model) applyPriceChangeToBook(book *websocket.OrderBookUpdate, change websocket.PriceChange) {
+func (m *state_model) applyPriceChangeToBook(book *websocket.OrderBookUpdate, change websocket.PriceChange) {
 	if book == nil {
 		return
 	}
@@ -568,7 +647,7 @@ func (m *model) applyPriceChangeToBook(book *websocket.OrderBookUpdate, change w
 	}
 }
 
-func (m *model) updateOrderSide(orders *[]types.OrderSummary, price, size string) {
+func (m *state_model) updateOrderSide(orders *[]types.OrderSummary, price, size string) {
 	// Find existing price level
 	for i, order := range *orders {
 		if order.Price == price {
@@ -605,6 +684,13 @@ func connectCmd() tea.Cmd {
 }
 
 func main() {
+	// Parse command line arguments
+	var marketSlug string
+	var mode string
+	flag.StringVar(&marketSlug, "slug", "elon-musk-net-worth-on-june-30", "Market or event slug")
+	flag.StringVar(&mode, "mode", "auto", "Mode: auto, event, or market")
+	flag.Parse()
+
 	// Setup logging to file instead of stdout to keep TUI clean
 	logFile, err := os.OpenFile("orderbook_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
@@ -620,28 +706,71 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Market slug - you can change this to any market
-	marketSlug := "us-recession-in-2025"
+	// Try to look up as an event first
+	var markets []MarketData
+	var allTokenIDs []string
+	var isEvent bool
+	var eventName string
 
-	// Look up market by slug and get token IDs
-	log.Printf("Looking up market: %s", marketSlug)
-	marketInfo, yesTokenID, noTokenID, err := lookupMarketBySlug(clobClient, marketSlug)
-	if err != nil {
-		log.Fatalf("Failed to lookup market: %v", err)
+	log.Printf("Looking up market/event: %s", marketSlug)
+
+	// Try as event first
+	eventMarkets, err := lookupEventBySlug(clobClient, marketSlug)
+	if err == nil && len(eventMarkets) > 0 {
+		isEvent = true
+		log.Printf("Found event with %d markets", len(eventMarkets))
+
+		// For negative risk markets, we want ALL outcomes
+		for _, market := range eventMarkets {
+			if len(market.ClobTokenIDs) > 0 {
+				// For markets with groupItemTitle (like net worth brackets), each market is one outcome
+				outcomeName := market.Question
+				if outcomeName == "" {
+					outcomeName = market.Title
+				}
+
+				// For negative risk markets, typically we want the NO token (index 1)
+				// which represents "will NOT be in this bracket"
+				if len(market.ClobTokenIDs) >= 2 {
+					noTokenID := market.ClobTokenIDs[1]
+					markets = append(markets, MarketData{
+						tokenID: noTokenID,
+						name:    fmt.Sprintf("NO %s", outcomeName),
+					})
+					allTokenIDs = append(allTokenIDs, noTokenID)
+				}
+			}
+		}
+		// Try to get event name from first market's title or use slug
+		if len(eventMarkets) > 0 && eventMarkets[0].Title != "" {
+			eventName = eventMarkets[0].Title
+		} else {
+			eventName = marketSlug
+		}
+	} else {
+		// Fall back to single market lookup
+		marketInfo, yesTokenID, noTokenID, err := lookupMarketBySlug(clobClient, marketSlug)
+		if err != nil {
+			log.Fatalf("Failed to lookup market: %v", err)
+		}
+
+		log.Printf("Found single market: %s", marketInfo.Question)
+		markets = []MarketData{
+			{tokenID: yesTokenID, name: "YES"},
+			{tokenID: noTokenID, name: "NO"},
+		}
+		allTokenIDs = []string{yesTokenID, noTokenID}
+		eventName = marketInfo.Question
 	}
 
-	log.Printf("Found market: %s", marketInfo.Question)
-	log.Printf("YES Token: %s", yesTokenID)
-	log.Printf("NO Token: %s", noTokenID)
-
-	// Create the tea program with client and token IDs
-	initialModelWithClient := func() model {
+	// Create the tea program with client and markets
+	initialModelWithClient := func() state_model {
 		m := initialModel()
 		m.clobClient = clobClient
 		m.marketSlug = marketSlug
-		m.yesTokenID = yesTokenID
-		m.noTokenID = noTokenID
-		m.marketInfo = marketInfo
+		m.markets = markets
+		m.isEvent = isEvent
+		m.eventName = eventName
 		return m
 	}
 
@@ -659,8 +788,8 @@ func main() {
 		log.Printf("Connecting to WebSocket...")
 		time.Sleep(500 * time.Millisecond) // Give the UI time to start
 
-		// Subscribe to real-time market data for both tokens
-		_, err = clobClient.SubscribeToMarketData([]string{yesTokenID, noTokenID}, handler)
+		// Subscribe to real-time market data for all tokens
+		_, err := clobClient.SubscribeToMarketData(allTokenIDs, handler)
 		if err != nil {
 			log.Printf("WebSocket connection failed: %v", err)
 			handler.program.Send(errorMsg(err))
@@ -680,37 +809,46 @@ func main() {
 		log.Printf("Starting spread fetching...")
 
 		for {
-			// Fetch YES spread
-			if resp, err := clobClient.GetSpread(yesTokenID); err == nil {
-				log.Printf("YES spread API response: %+v", resp)
-				if spreadStr := formatSpreadResponse(resp); spreadStr != "" {
-					log.Printf("YES spread formatted: %s", spreadStr)
-					p.Send(yesSpreadMsg(spreadStr))
+			// Fetch spread for first market
+			if len(markets) > 0 {
+				if resp, err := clobClient.GetSpread(markets[0].tokenID); err == nil {
+					log.Printf("Market 1 spread API response: %+v", resp)
+					if spreadStr := formatSpreadResponse(resp); spreadStr != "" {
+						log.Printf("Market 1 spread formatted: %s", spreadStr)
+						p.Send(yesSpreadMsg(spreadStr))
+					}
+				} else {
+					log.Printf("Failed to fetch market 1 spread: %v", err)
 				}
-			} else {
-				log.Printf("Failed to fetch YES spread: %v", err)
 			}
 
-			// Fetch NO spread
-			if resp, err := clobClient.GetSpread(noTokenID); err == nil {
-				log.Printf("NO spread API response: %+v", resp)
-				if spreadStr := formatSpreadResponse(resp); spreadStr != "" {
-					log.Printf("NO spread formatted: %s", spreadStr)
-					p.Send(noSpreadMsg(spreadStr))
+			// Fetch spread for second market
+			if len(markets) > 1 {
+				if resp, err := clobClient.GetSpread(markets[1].tokenID); err == nil {
+					log.Printf("Market 2 spread API response: %+v", resp)
+					if spreadStr := formatSpreadResponse(resp); spreadStr != "" {
+						log.Printf("Market 2 spread formatted: %s", spreadStr)
+						p.Send(noSpreadMsg(spreadStr))
+					}
+				} else {
+					log.Printf("Failed to fetch market 2 spread: %v", err)
 				}
-			} else {
-				log.Printf("Failed to fetch NO spread: %v", err)
 			}
 
 			time.Sleep(10 * time.Second) // Update spreads every 10 seconds
 		}
 	}()
 
-	// Send initial market info to UI
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		p.Send(marketInfoMsg(marketInfo))
-	}()
+	// Send initial market info to UI if available
+	if !isEvent && len(eventMarkets) == 0 {
+		// For single market, send market info
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			if marketInfo, _, _, err := lookupMarketBySlug(clobClient, marketSlug); err == nil {
+				p.Send(marketInfoMsg(marketInfo))
+			}
+		}()
+	}
 
 	// Run the program
 	log.Printf("Running TUI program...")
@@ -718,6 +856,100 @@ func main() {
 		log.Fatalf("TUI program failed: %v", err)
 	}
 	log.Printf("TUI program exited")
+}
+
+// lookupEventBySlug finds an event by slug and returns all markets
+func lookupEventBySlug(client *client.ClobClient, slug string) ([]types.GammaMarket, error) {
+	// Search for events by slug
+	url := fmt.Sprintf("https://gamma-api.polymarket.com/events?slug=%s", slug)
+
+	log.Printf("Fetching event from URL: %s", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch event: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	responsePreview := string(body)
+	if len(responsePreview) > 500 {
+		responsePreview = responsePreview[:500]
+	}
+	log.Printf("Event API response (first 500 chars): %s", responsePreview)
+
+	// Parse event response with custom structure (ID is string in API)
+	var events []struct {
+		ID      string `json:"id"`
+		Slug    string `json:"slug"`
+		Title   string `json:"title"`
+		Markets []struct {
+			ID              string   `json:"id"`
+			Slug            string   `json:"slug"`
+			Archived        bool     `json:"archived"`
+			Active          bool     `json:"active"`
+			Closed          bool     `json:"closed"`
+			Liquidity       float64  `json:"liquidity"`
+			Volume          float64  `json:"volume"`
+			StartDate       string   `json:"start_date"`
+			EndDate         string   `json:"end_date"`
+			Title           string   `json:"title"`
+			Description     string   `json:"description"`
+			ConditionID     string   `json:"condition_id"`
+			ClobTokenIDs    []string `json:"clob_token_ids"`
+			EnableOrderBook bool     `json:"enable_order_book"`
+			Question        string   `json:"question"`
+			GroupItemTitle  string   `json:"groupItemTitle"`
+		} `json:"markets"`
+	}
+
+	if err := json.Unmarshal(body, &events); err != nil {
+		log.Printf("Failed to parse event response: %v", err)
+		return nil, fmt.Errorf("failed to parse event response: %w", err)
+	}
+
+	log.Printf("Parsed %d events from response", len(events))
+	if len(events) == 0 {
+		return nil, fmt.Errorf("event with slug '%s' not found", slug)
+	}
+
+	log.Printf("Event[0] has %d markets", len(events[0].Markets))
+
+	// Convert to GammaMarket slice
+	markets := make([]types.GammaMarket, len(events[0].Markets))
+	for i, m := range events[0].Markets {
+		// Convert string ID to int
+		id, _ := strconv.Atoi(m.ID)
+
+		markets[i] = types.GammaMarket{
+			ID:              id,
+			Slug:            m.Slug,
+			Archived:        m.Archived,
+			Active:          m.Active,
+			Closed:          m.Closed,
+			Liquidity:       m.Liquidity,
+			Volume:          m.Volume,
+			StartDate:       m.StartDate,
+			EndDate:         m.EndDate,
+			Title:           m.Title,
+			Description:     m.Description,
+			ConditionID:     m.ConditionID,
+			ClobTokenIDs:    m.ClobTokenIDs,
+			EnableOrderBook: m.EnableOrderBook,
+			Question:        m.Question,
+		}
+
+		// Use groupItemTitle as the question/title if available
+		if m.GroupItemTitle != "" {
+			markets[i].Question = m.GroupItemTitle
+		}
+	}
+
+	return markets, nil
 }
 
 // lookupMarketBySlug finds a market by slug and returns token IDs

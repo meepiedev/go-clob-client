@@ -90,6 +90,17 @@ type TickSizeChangeUpdate struct {
 	NewTickSize string `json:"new_tick_size"`
 }
 
+// LastTradePriceUpdate represents a last trade price event
+// Based on: Polymarket CLOB WebSocket API behavior
+type LastTradePriceUpdate struct {
+	EventType string `json:"event_type"` // "last_trade_price"
+	AssetID   string `json:"asset_id"`
+	Market    string `json:"market"`
+	Timestamp string `json:"timestamp"`
+	Price     string `json:"price"`
+	Size      string `json:"size,omitempty"`
+}
+
 // UserUpdate represents a real-time user update (orders, trades)
 // Inferred from websocket API behavior for user channel
 type UserUpdate struct {
@@ -103,6 +114,7 @@ type MessageHandler interface {
 	OnOrderBookUpdate(update *OrderBookUpdate)
 	OnPriceChange(update *PriceChangeUpdate)
 	OnTickSizeChange(update *TickSizeChangeUpdate)
+	OnLastTradePrice(update *LastTradePriceUpdate)
 	OnUserUpdate(update *UserUpdate)
 	OnError(err error)
 	OnConnect()
@@ -276,7 +288,7 @@ func (c *Client) subscribe(subType SubscriptionType, auth *AuthMessage, markets 
 // startHeartbeat starts the ping heartbeat
 // Based on: clob-client-main/examples/socketConnection.ts:83-86
 func (c *Client) startHeartbeat() {
-	c.pingTicker = time.NewTicker(50 * time.Second)
+	c.pingTicker = time.NewTicker(30 * time.Second)
 	go func() {
 		for {
 			select {
@@ -294,6 +306,8 @@ func (c *Client) startHeartbeat() {
 						if c.handler != nil {
 							c.handler.OnError(err)
 						}
+					} else {
+						log.Printf("[WS PING] Sent PING to WebSocket")
 					}
 				} else {
 					c.mu.RUnlock()
@@ -342,6 +356,7 @@ func (c *Client) messageLoop() {
 
 			// Handle PONG responses
 			if string(message) == "PONG" {
+				log.Printf("[WS PONG] Received PONG from WebSocket")
 				continue
 			}
 
@@ -453,6 +468,16 @@ func (c *Client) handleObjectMessage(update map[string]interface{}, rawMessage [
 				return
 			} else {
 				log.Printf("Failed to parse tick_size_change message: %v", err)
+			}
+			
+		case "last_trade_price":
+			// Parse as last trade price message
+			var tradeUpdate LastTradePriceUpdate
+			if err := json.Unmarshal(rawMessage, &tradeUpdate); err == nil {
+				c.handler.OnLastTradePrice(&tradeUpdate)
+				return
+			} else {
+				log.Printf("Failed to parse last_trade_price message: %v", err)
 			}
 			
 		default:

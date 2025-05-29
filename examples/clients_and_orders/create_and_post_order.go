@@ -109,12 +109,12 @@ func main() {
 	// Note: Minimum order size is typically $1.00
 	orderArgs := &types.OrderArgs{
 		TokenID:    tokenID,
-		Price:      0.50,     // 50 cents
-		Size:       10.0,     // $5.00 worth (10 shares at $0.50)
+		Price:      0.50, // 50 cents
+		Size:       10.0, // $5.00 worth (10 shares at $0.50)
 		Side:       types.BUY,
-		FeeRateBps: 0,        // 0 basis points fee
+		FeeRateBps: 0, // 0 basis points fee
 		Nonce:      0,
-		Expiration: 0,        // No expiration
+		Expiration: 0, // No expiration
 		Taker:      types.ZeroAddress,
 	}
 

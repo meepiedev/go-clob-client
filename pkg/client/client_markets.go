@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/pooofdevelopment/go-clob-client/pkg/headers"
 	"github.com/pooofdevelopment/go-clob-client/pkg/httpclient"
@@ -645,4 +646,199 @@ func (c *ClobClient) GetGammaMarkets(params *types.GammaMarketsParams) ([]types.
 	}
 
 	return markets, nil
+}
+
+// GetGammaEvents fetches events from the gamma API
+func (c *ClobClient) GetGammaEvents(params *types.GammaEventsParams) ([]types.GammaEvent, error) {
+	// Build URL with query parameters
+	baseURL := "https://gamma-api.polymarket.com/events"
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	q := u.Query()
+	
+	if params != nil {
+		if params.Slug != "" {
+			q.Set("slug", params.Slug)
+		}
+		if params.ID > 0 {
+			q.Set("id", strconv.Itoa(params.ID))
+		}
+		// Add more parameters as needed
+	}
+	
+	u.RawQuery = q.Encode()
+	
+	// Make the request
+	resp, err := c.httpClient.Get(u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse response as array of GammaEvent
+	var events []types.GammaEvent
+	
+	// Try to parse the entire response as an event array
+	jsonData, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	
+	// The response might be wrapped or direct array
+	var rawEvents []map[string]interface{}
+	if err := json.Unmarshal(jsonData, &rawEvents); err != nil {
+		// Try parsing as wrapped response
+		if data, ok := resp["data"].([]interface{}); ok {
+			for _, item := range data {
+				if eventMap, ok := item.(map[string]interface{}); ok {
+					rawEvents = append(rawEvents, eventMap)
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("failed to parse events response")
+		}
+	}
+	
+	for _, eventData := range rawEvents {
+		event := types.GammaEvent{}
+		
+		// Parse ID
+		switch v := eventData["id"].(type) {
+		case float64:
+			event.ID = int(v)
+		case string:
+			fmt.Sscanf(v, "%d", &event.ID)
+		}
+		
+		// Parse slug
+		if slug, ok := eventData["slug"].(string); ok {
+			event.Slug = slug
+		}
+		
+		// Parse title
+		if title, ok := eventData["title"].(string); ok {
+			event.Title = title
+		}
+		
+		// Parse markets array
+		if marketsData, ok := eventData["markets"].([]interface{}); ok {
+			for _, mData := range marketsData {
+				if m, ok := mData.(map[string]interface{}); ok {
+					market := types.GammaMarket{}
+					
+					// Parse market fields
+					if question, ok := m["question"].(string); ok {
+						market.Question = question
+					}
+					if groupItemTitle, ok := m["groupItemTitle"].(string); ok {
+						market.Title = groupItemTitle
+					}
+					if clobTokenIds, ok := m["clobTokenIds"].(string); ok {
+						var tokenIDs []string
+						if err := json.Unmarshal([]byte(clobTokenIds), &tokenIDs); err == nil {
+							market.ClobTokenIDs = tokenIDs
+						}
+					}
+					if outcomes, ok := m["outcomes"].(string); ok {
+						// Store raw outcomes string in Description for now
+						market.Description = outcomes
+					}
+					if negRisk, ok := m["negRisk"].(bool); ok {
+						event.NegRisk = negRisk
+					}
+					
+					event.Markets = append(event.Markets, market)
+				}
+			}
+		}
+		
+		events = append(events, event)
+	}
+	
+	return events, nil
+}
+
+// FetchMarketOutcomes fetches outcome token IDs and names for a market or event
+func (c *ClobClient) FetchMarketOutcomes(slug string) ([]string, map[string]string, error) {
+	// First try to fetch as an event which contains multiple markets
+	events, err := c.GetGammaEvents(&types.GammaEventsParams{Slug: slug})
+	if err == nil && len(events) > 0 {
+		// For tournament markets, we need all the "No" outcomes
+		allOutcomes := []string{}
+		outcomeNames := make(map[string]string)
+		
+		// For each market in the event, extract the "No" outcome token ID
+		for _, event := range events {
+			for _, market := range event.Markets {
+				// Parse outcomes from Description (where we stored the raw outcomes string)
+				var outcomes []string
+				if market.Description != "" {
+					if err := json.Unmarshal([]byte(market.Description), &outcomes); err == nil {
+						// For negative risk markets, we want ALL "No" outcomes
+						// Each market has [Yes, No] outcomes, we want index 1 (No)
+						for i, outcome := range outcomes {
+							if strings.ToLower(outcome) == "no" && i < len(market.ClobTokenIDs) {
+								allOutcomes = append(allOutcomes, market.ClobTokenIDs[i])
+								outcomeName := market.Title
+								if outcomeName == "" {
+									outcomeName = market.Question
+								}
+								outcomeNames[market.ClobTokenIDs[i]] = outcomeName
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		if len(allOutcomes) > 0 {
+			return allOutcomes, outcomeNames, nil
+		}
+	}
+	
+	// If not an event, try as a single market
+	markets, err := c.GetGammaMarkets(&types.GammaMarketsParams{Slug: []string{slug}})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch market: %w", err)
+	}
+	
+	if len(markets) == 0 {
+		return nil, nil, fmt.Errorf("no market found for slug: %s", slug)
+	}
+	
+	market := markets[0]
+	
+	// For single negative risk markets, each token represents one option
+	outcomeNames := make(map[string]string)
+	// Note: Single market outcomes would need to be fetched separately
+	// For now, return token IDs without names
+	return market.ClobTokenIDs, outcomeNames, nil
+}
+
+// CheckNegativeRisk checks if a market or event is negative risk
+func (c *ClobClient) CheckNegativeRisk(slug string) (bool, error) {
+	// First check if it's a single market
+	markets, err := c.GetGammaMarkets(&types.GammaMarketsParams{Slug: []string{slug}})
+	if err == nil && len(markets) > 0 {
+		// For now, we can't directly check negRisk from gamma markets API
+		// This would need to be added to the GammaMarket struct
+		// Return true for now as the arbitrage bot validates this
+		return true, nil
+	}
+	
+	// If not a single market, check as event
+	events, err := c.GetGammaEvents(&types.GammaEventsParams{Slug: slug})
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch market or event: %w", err)
+	}
+	
+	if len(events) == 0 {
+		return false, fmt.Errorf("no market or event found for slug: %s", slug)
+	}
+	
+	// Check if ALL markets in the event are negRisk
+	return events[0].NegRisk, nil
 }

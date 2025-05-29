@@ -326,3 +326,18 @@ type GammaMarket struct {
 	EnableOrderBook bool     `json:"enable_order_book"`
 	Question        string   `json:"question"`
 }
+
+// GammaEventsParams represents parameters for gamma events API
+type GammaEventsParams struct {
+	ID   int    `json:"id,omitempty"`
+	Slug string `json:"slug,omitempty"`
+}
+
+// GammaEvent represents an event from the gamma API
+type GammaEvent struct {
+	ID      int           `json:"id"`
+	Slug    string        `json:"slug"`
+	Title   string        `json:"title"`
+	Markets []GammaMarket `json:"markets"`
+	NegRisk bool          `json:"negRisk"`
+}

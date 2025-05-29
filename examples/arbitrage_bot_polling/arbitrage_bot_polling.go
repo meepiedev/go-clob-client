@@ -131,7 +131,7 @@ type Model struct {
 	pollInProgress bool
 
 	// Order tracking to prevent duplicates
-	activeOrders sync.Map // marketName -> time.Time (last order time)
+	activeOrders sync.Map // marketName -> bool (true if has active orders)
 
 	// Control
 	ctx    context.Context
@@ -1054,19 +1054,16 @@ func (m *Model) checkArbitrageForMarket(market MarketGroup) []ArbitrageOpportuni
 
 // Execute arbitrage with parallel order placement
 func (m *Model) executeArbitrageParallel(opp ArbitrageOpportunity, market MarketGroup) {
-	// Check if we already have an active order for this market
-	if lastOrderTime, exists := m.activeOrders.Load(market.Name); exists {
-		if timeSince := time.Since(lastOrderTime.(time.Time)); timeSince < 3*time.Second {
-			// Skip if we placed an order less than 3 seconds ago (order expiry + buffer)
-			log.Printf("Skipping arbitrage for %s - order placed %.1f seconds ago", market.Name, timeSince.Seconds())
-			return
-		}
+	// Check if we already have active orders for this market
+	if hasActive, exists := m.activeOrders.Load(market.Name); exists && hasActive.(bool) {
+		log.Printf("Skipping arbitrage for %s - orders still active", market.Name)
+		return
 	}
 
 	log.Printf("Executing arbitrage for %s - %d orders", market.Name, len(opp.Outcomes))
 
-	// Mark this market as having an active order
-	m.activeOrders.Store(market.Name, time.Now())
+	// Mark this market as having active orders
+	m.activeOrders.Store(market.Name, true)
 
 	// Create order results channel
 	results := make(chan OrderResult, len(opp.Outcomes))
@@ -1186,15 +1183,18 @@ func (m *Model) executeArbitrageParallel(opp ArbitrageOpportunity, market Market
 
 		log.Printf("Arbitrage execution complete: %d/%d orders successful", successCount, len(opp.Outcomes))
 
-		// Update PnL if all successful
+		// Clear the active order status regardless of success/failure
+		// This allows retry on failure
+		m.activeOrders.Delete(market.Name)
+		
 		if successCount == len(opp.Outcomes) {
+			// Update PnL only if all orders were successful
 			m.stats.totalPnL += opp.Edge
+			log.Printf("Market %s cleared - all orders successful", market.Name)
+		} else {
+			// Market is cleared for retry since some orders failed
+			log.Printf("Market %s cleared - %d/%d orders failed, can retry", market.Name, len(opp.Outcomes)-successCount, len(opp.Outcomes))
 		}
-
-		// Clear the active order after 3 seconds (expiry + buffer)
-		time.AfterFunc(3*time.Second, func() {
-			m.activeOrders.Delete(market.Name)
-		})
 	}()
 }
 

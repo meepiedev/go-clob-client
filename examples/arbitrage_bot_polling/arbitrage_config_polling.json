@@ -9,13 +9,33 @@
   "dry_run": false,
   "markets": [
     {
-      "name": "Elon Musk Net Worth on June 30?",
-      "slug": "elon-musk-net-worth-on-june-30",
+      "name": "Poland Presidential Election",
+      "slug": "poland-presidential-election",
+      "outcomes": []
+    },
+    {
+      "name": "Fed decision in June?",
+      "slug": "fed-decision-in-june",
+      "outcomes": []
+    },
+    {
+      "name": "Fed decision in July?",
+      "slug": "fed-decision-in-july",
+      "outcomes": []
+    },
+    {
+      "name": "How many Fed rate cuts in 2025?",
+      "slug": "how-many-fed-rate-cuts-in-2025",
       "outcomes": []
     },
     {
       "name": "2025 Chevrolet Detroit Grand Prix Winner",
       "slug": "2025-chevrolet-detroit-grand-prix-winner",
+      "outcomes": []
+    },
+    {
+      "name": "Elon Musk Net Worth on June 30?",
+      "slug": "elon-musk-net-worth-on-june-30",
       "outcomes": []
     }
   ],

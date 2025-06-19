@@ -103,8 +103,8 @@ func (c *ClobClient) PostOrders(orders []types.PostOrdersArgs) (*types.BatchOrde
 		return nil, fmt.Errorf("at least one order is required")
 	}
 	
-	// Build the request body
-	postOrdersList := make([]map[string]interface{}, len(orders))
+	// Build the request body as an array of orders
+	body := make([]map[string]interface{}, len(orders))
 	for i, orderArgs := range orders {
 		// Extract the signed order
 		signedOrder, ok := orderArgs.Order.(*model.SignedOrder)
@@ -112,20 +112,35 @@ func (c *ClobClient) PostOrders(orders []types.PostOrdersArgs) (*types.BatchOrde
 			return nil, fmt.Errorf("order at index %d is not a SignedOrder", i)
 		}
 		
-		// Convert order to JSON format without owner field (added at top level)
-		orderJSON := c.orderToJSON(signedOrder, orderArgs.OrderType)
+		// Convert side from int to string
+		sideStr := "BUY"
+		if signedOrder.Side.Int64() == 1 {
+			sideStr = "SELL"
+		}
 		
-		// Extract just the order and orderType for the batch format
-		postOrdersList[i] = map[string]interface{}{
-			"order":     orderJSON["order"],
+		// Build order JSON matching the API spec exactly
+		orderData := map[string]interface{}{
+			"salt":          signedOrder.Salt.Int64(),  // Send as number
+			"maker":         signedOrder.Maker.Hex(),
+			"signer":        signedOrder.Signer.Hex(),
+			"taker":         signedOrder.Taker.Hex(),
+			"tokenId":       signedOrder.TokenId.String(),
+			"makerAmount":   signedOrder.MakerAmount.String(),
+			"takerAmount":   signedOrder.TakerAmount.String(),
+			"expiration":    signedOrder.Expiration.String(),
+			"nonce":         signedOrder.Nonce.String(),
+			"feeRateBps":    signedOrder.FeeRateBps.String(),
+			"side":          sideStr,
+			"signatureType": signedOrder.SignatureType.Int64(),  // Send as number
+			"signature":     "0x" + fmt.Sprintf("%x", signedOrder.Signature),
+		}
+		
+		// Build order object matching TypeScript/Python format
+		body[i] = map[string]interface{}{
+			"order":     orderData,
+			"owner":     c.creds.ApiKey,
 			"orderType": string(orderArgs.OrderType),
 		}
-	}
-	
-	// Build the final request body
-	body := map[string]interface{}{
-		"PostOrder": postOrdersList,
-		"owner":     c.creds.ApiKey,
 	}
 	
 	requestArgs := &types.RequestArgs{
@@ -144,15 +159,38 @@ func (c *ClobClient) PostOrders(orders []types.PostOrdersArgs) (*types.BatchOrde
 		return nil, err
 	}
 	
-	// Parse response into BatchOrderResponse
+	// The response might be an array of order responses or a single response object
+	// Try to handle both cases
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		return nil, err
 	}
 	
+	// First try as array response (successful batch)
+	var arrayResponse []map[string]interface{}
+	if err := json.Unmarshal(responseJSON, &arrayResponse); err == nil && len(arrayResponse) > 0 {
+		// Extract order IDs and hashes from successful responses
+		orderHashes := make([]string, 0)
+		for _, orderResp := range arrayResponse {
+			if hash, ok := orderResp["transactionHash"].(string); ok && hash != "" {
+				orderHashes = append(orderHashes, hash)
+			}
+		}
+		
+		return &types.BatchOrderResponse{
+			Success:     true,
+			OrderHashes: orderHashes,
+		}, nil
+	}
+	
+	// Try as single error response
 	var batchResponse types.BatchOrderResponse
 	if err := json.Unmarshal(responseJSON, &batchResponse); err != nil {
-		return nil, err
+		// If we can't parse it as expected format, return a generic error
+		return &types.BatchOrderResponse{
+			Success:  false,
+			ErrorMsg: fmt.Sprintf("Unexpected response format: %s", string(responseJSON)),
+		}, nil
 	}
 	
 	return &batchResponse, nil

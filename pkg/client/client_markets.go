@@ -934,6 +934,9 @@ func (c *ClobClient) GetGammaEvents(params *types.GammaEventsParams) ([]types.Ga
 					if groupItemTitle, ok := m["groupItemTitle"].(string); ok {
 						market.Title = groupItemTitle
 					}
+					if slug, ok := m["slug"].(string); ok {
+						market.Slug = slug
+					}
 					if clobTokenIds, ok := m["clobTokenIds"].(string); ok {
 						var tokenIDs []string
 						if err := json.Unmarshal([]byte(clobTokenIds), &tokenIDs); err == nil {
@@ -946,6 +949,24 @@ func (c *ClobClient) GetGammaEvents(params *types.GammaEventsParams) ([]types.Ga
 					}
 					if negRisk, ok := m["negRisk"].(bool); ok {
 						event.NegRisk = negRisk
+					}
+					
+					// Parse volume
+					switch v := m["volume"].(type) {
+					case float64:
+						market.Volume = v
+					case string:
+						fmt.Sscanf(v, "%f", &market.Volume)
+					}
+					
+					// Also check for volume24hr field
+					if market.Volume == 0 {
+						switch v := m["volume24hr"].(type) {
+						case float64:
+							market.Volume = v
+						case string:
+							fmt.Sscanf(v, "%f", &market.Volume)
+						}
 					}
 					
 					// Parse orderMinSize

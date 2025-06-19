@@ -1,0 +1,71 @@
+linters:
+  enable:
+    - gofmt
+    - golint
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - structcheck
+    - varcheck
+    - ineffassign
+    - deadcode
+    - typecheck
+    - gosec
+    - unconvert
+    - dupl
+    - goconst
+    - gocyclo
+    - gocognit
+    - asciicheck
+    - gofumpt
+    - misspell
+    - unparam
+    - dogsled
+    - nakedret
+    - prealloc
+    - exportloopref
+    - gocritic
+    - gochecknoinits
+    - gochecknoglobals
+    - whitespace
+    - wsl
+    - goprintffuncname
+    - goerr113
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  misspell:
+    locale: US
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+      - experimental
+    disabled-checks:
+      - wrapperFunc
+  golint:
+    min-confidence: 0.8
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+    - path: examples/
+      linters:
+        - gochecknoglobals
+        - goerr113
+
+run:
+  timeout: 5m
+  tests: true

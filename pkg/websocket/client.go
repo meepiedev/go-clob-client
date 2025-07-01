@@ -183,7 +183,7 @@ func (c *Client) connectToChannel(channel string) error {
 
 	// Close existing connection if any
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close() // Best effort cleanup
 	}
 
 	c.conn = conn
@@ -324,7 +324,7 @@ func (c *Client) messageLoop() {
 		c.mu.Lock()
 		c.isConnected = false
 		if c.conn != nil {
-			c.conn.Close()
+			_ = c.conn.Close() // Best effort cleanup
 		}
 		c.mu.Unlock()
 

@@ -163,7 +163,7 @@ func (m state_model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.quit) {
 			if m.wsClient != nil {
-				m.wsClient.Close()
+				_ = m.wsClient.Close() // Best effort cleanup
 			}
 			return m, tea.Quit
 		}

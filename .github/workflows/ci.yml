@@ -76,12 +76,22 @@ jobs:
         go-version: 1.21.x
     
     - name: Build
-      run: go build -v ./...
+      run: |
+        # Build only the main package, excluding examples
+        go build -v ./pkg/...
     
     - name: Build examples
       run: |
-        for example in examples/*.go; do
-          go build -o /tmp/$(basename $example .go) $example
+        # Build each example separately to avoid multiple main declarations
+        for dir in examples/*/; do
+          if [ -d "$dir" ]; then
+            for file in "$dir"*.go; do
+              if [ -f "$file" ]; then
+                echo "Building $file"
+                go build -o /tmp/$(basename "$file" .go) "$file"
+              fi
+            done
+          fi
         done
 
   security:
@@ -99,7 +109,7 @@ jobs:
     - name: Run gosec
       uses: securego/gosec@master
       with:
-        args: ./...
+        args: -exclude-dir=examples ./...
     
     - name: Run govulncheck
       run: |

@@ -625,7 +625,9 @@ func (c *ClobClient) GetGammaMarkets(params *types.GammaMarketsParams) ([]types.
 				case float64:
 					market.ID = int(v)
 				case string:
-					fmt.Sscanf(v, "%d", &market.ID)
+					if _, err := fmt.Sscanf(v, "%d", &market.ID); err != nil {
+						market.ID = 0
+					}
 				}
 
 				// Parse question
@@ -654,7 +656,9 @@ func (c *ClobClient) GetGammaMarkets(params *types.GammaMarketsParams) ([]types.
 				case float64:
 					market.Liquidity = v
 				case string:
-					fmt.Sscanf(v, "%f", &market.Liquidity)
+					if _, err := fmt.Sscanf(v, "%f", &market.Liquidity); err != nil {
+						market.Liquidity = 0
+					}
 				}
 				if market.Liquidity == 0 {
 					switch v := m["liquidityNum"].(type) {

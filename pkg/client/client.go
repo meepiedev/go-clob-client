@@ -507,7 +507,7 @@ func (c *ClobClient) SubscribeToMarketData(tokenIDs []string, handler websocket.
 	client := c.CreateWebSocketClient(handler)
 	
 	if err := client.SubscribeToMarket(tokenIDs, true); err != nil {
-		client.Close()
+		_ = client.Close() // Best effort cleanup
 		return nil, fmt.Errorf("failed to subscribe to market: %w", err)
 	}
 	
@@ -524,7 +524,7 @@ func (c *ClobClient) SubscribeToUserData(markets []string, handler websocket.Mes
 	client := c.CreateWebSocketClient(handler)
 	
 	if err := client.SubscribeToUser(c.creds, markets, true); err != nil {
-		client.Close()
+		_ = client.Close() // Best effort cleanup
 		return nil, fmt.Errorf("failed to subscribe to user data: %w", err)
 	}
 	

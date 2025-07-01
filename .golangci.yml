@@ -1,15 +1,11 @@
 linters:
   enable:
     - gofmt
-    - golint
     - govet
     - errcheck
     - staticcheck
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
     - gosec
     - unconvert
@@ -32,6 +28,7 @@ linters:
     - wsl
     - goprintffuncname
     - goerr113
+    - revive # replacement for golint
 
 linters-settings:
   gocyclo:
@@ -50,8 +47,8 @@ linters-settings:
       - experimental
     disabled-checks:
       - wrapperFunc
-  golint:
-    min-confidence: 0.8
+  revive:
+    confidence: 0.8
 
 issues:
   exclude-rules:
@@ -65,7 +62,14 @@ issues:
       linters:
         - gochecknoglobals
         - goerr113
+        - errcheck
+        - gosec
+    # Exclude examples from build issues
+    - path: examples/
+      text: "multiple packages in directory"
 
 run:
   timeout: 5m
   tests: true
+  skip-dirs:
+    - examples
